@@ -31,3 +31,6 @@ The rules are in `~/Documents/house/RULES.md`. Read them first and cite rule ids
 1. Run the bench, then `house price compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`.
 2. If the verdict is better or same, land it. If it's inconclusive, rerun with more reps. If it's worse, try three cheaper ways. If one is still worse, propose a `Price:` trailer with the numbers and ask the user (K4). Never cross a limit.
 3. Before a live run, state its token cost and how many reps you'll buy (L1, L2).
+
+## Learn from past sessions (S)
+After a working day or a live run, mine what agents actually did. figma-cdp's `tests/sleep/sleep.py mine`, then `digest`, works on any project's `~/.claude/projects/*<name>*` transcripts with `--source`. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).

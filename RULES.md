@@ -44,6 +44,13 @@ A change lands only if it costs no more than before, unless the user accepts the
 - **K4** Only the user sets a price. The agent tries three cheaper ways first, then proposes one trailer per number: `Price: <metric>; <before> -> <after>; buys: <what>; tried: <what>; owner: "<the user's words>", <date>`. The agent never writes the owner's words itself.
 - **K5** When the score is equal, less code wins (`git diff --shortstat`). Refresh the baseline only in its own commit.
 
+## Learning (S)
+How a project learns from its own sessions, taken from figma-cdp's sleep loop (figma-cdp `docs/sleep-loop.md`).
+- **S1** Learn from what agents actually did, not from what the docs imagine they do. Periodically read past transcripts for failed calls, retries, stalls, heavy reads and the user's corrections, and weight the corrections highest. Fix the top few, plus one or two rare ones.
+- **S2** Every fix lands as a check that would fail without it: a test, an error text the code must print, or a rule a doc must keep. That way a later trim or rewrite can't silently forget it.
+- **S3** Put the fix where the agent is when it fails. An error message that names the fix beats a line in a doc. When a failure comes back after its fix, move the fix closer to that point.
+- **S4** A lesson says what to do, never only "X doesn't work". Drop hints and lessons that never fire. Environment trouble (sleep, lock, permissions) belongs to the harness, not to a project lesson.
+
 ## Commits (C)
 - **C1** Commit messages say what landed. They carry no attribution lines.
 - **C2** Push only with the user's OK.
