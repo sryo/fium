@@ -35,3 +35,5 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. figma-cdp's `tests/sleep/sleep.py mine`, then `digest`, works on any project's `~/.claude/projects/*<name>*` transcripts with `--source`. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).
+
+To improve fium itself, propose rule or template changes from `fium survey` to the user.

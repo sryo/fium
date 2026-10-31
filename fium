@@ -212,6 +212,55 @@ def price_ledger(repo, since=None):
 
 
 
+# ---- survey: what the repos under a folder say about the rules. It reads; it never writes. ----
+HOME = Path(__file__).resolve().parent
+SURVEYED = ("AGENTS.md", "GOALS.md", "README.md")
+
+
+def headings(text):
+    return {h.strip().lower() for h in re.findall(r"^## (.+)$", text, re.M)}
+
+
+def survey(base, min_repos=3):
+    repos = sorted(d for d in Path(base).expanduser().iterdir() if (d / ".git").exists())
+    ids = re.findall(r"^- \*\*([A-Z]\d+)", (HOME / "RULES.md").read_text(), re.M)
+    # A template heading's NAME matches any project name.
+    known = {f: [re.compile("^" + re.escape(h).replace("name", ".+") + "$") for h in headings((HOME / "templates" / f).read_text())]
+             for f in SURVEYED}
+    failures, adds, cited, passing = {}, {f: {} for f in SURVEYED}, {}, 0
+    for d in repos:
+        fs = check(d)
+        passing += not any(f["level"] == "error" for f in fs)
+        for r in {f["rule"] for f in fs}:
+            failures[r] = failures.get(r, 0) + 1
+        for f in SURVEYED:
+            p = d / f
+            for h in headings(p.read_text()) if p.is_file() else ():
+                if not any(rx.match(h) for rx in known[f]):
+                    adds[f][h] = adds[f].get(h, 0) + 1
+        log = subprocess.run(["git", "-C", str(d), "log", "--format=%B"], capture_output=True, text=True).stdout
+        for rid in ids:
+            if re.search(rf"\b{rid}\b", log):
+                cited[rid] = cited.get(rid, 0) + 1
+    drift = {f: {h: n for h, n in sorted(hs.items(), key=lambda x: -x[1]) if n >= min_repos} for f, hs in adds.items()}
+    return {"repos": len(repos), "passing": passing,
+            "failures": dict(sorted(failures.items(), key=lambda x: -x[1])),
+            "drift": {f: hs for f, hs in drift.items() if hs},
+            "cited": dict(sorted(cited.items(), key=lambda x: -x[1])),
+            "uncited": [r for r in ids if r not in cited]}
+
+
+def survey_main(a):
+    s = survey(a.path, a.min)
+    if a.json:
+        return print(json.dumps(s))
+    print(f"{s['passing']}/{s['repos']} repos pass fium check")
+    for label, d in [("repos failing each rule", s["failures"]), ("repos citing each rule", s["cited"]),
+                     *((f"{f} sections the template lacks", hs) for f, hs in s["drift"].items())]:
+        print(f"{label}: " + (", ".join(f"{k} {n}" for k, n in d.items()) or "none"))
+    print("never cited: " + (", ".join(s["uncited"]) or "none"))
+
+
 def main():
     ap = argparse.ArgumentParser(prog="fium")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -219,6 +268,10 @@ def main():
     c.add_argument("path", nargs="?", default=".")
     c.add_argument("--all", action="store_true", help="check every git repo directly under path")
     c.add_argument("--json", action="store_true")
+    sv = sub.add_parser("survey", help="report rule failures, template drift and rule citations across the repos under a folder")
+    sv.add_argument("path", nargs="?", default="~/Documents")
+    sv.add_argument("--min", type=int, default=3, help="repos a section must appear in to count as drift")
+    sv.add_argument("--json", action="store_true")
     pr = sub.add_parser("price").add_subparsers(dest="pcmd", required=True)
     pc = pr.add_parser("compare", help="judge a run against a baseline")
     pc.add_argument("base"); pc.add_argument("run")
@@ -230,6 +283,8 @@ def main():
     a = ap.parse_args()
     if a.cmd == "price":
         return price_main(a)
+    if a.cmd == "survey":
+        return survey_main(a)
     base = Path(a.path).expanduser()
     if a.all:
         res = {d.name: check(d) for d in sorted(base.iterdir()) if (d / ".git").exists()}
