@@ -97,30 +97,41 @@ def check(root):
 # A run file: {"metrics": {name: {"dir": "lower"|"higher", "kind": time|tokens|count|bytes|quality|loc, "samples": [...]}},
 #              "limits": {name: hard_max_or_min}}. Deterministic kinds (count, bytes, quality, loc) judge any move;
 # noisy kinds (time, tokens) judge the bootstrap 95% range of the run/base median ratio against 1 ± rel.
-import random, statistics, subprocess
+# A limit kind is judged only against its limit. A move no bigger than the noise file's abs for that metric is same.
+import math, random, statistics, subprocess
 
 NOISY = {"time", "tokens"}
 DEFAULT_REL = 0.10
 TRAILER = re.compile(r"^(Price|Bench-Accepted):\s*([^;]+);\s*([^;]+?)\s*->\s*([^;]+?);\s*buys:\s*(.*?)(?:;\s*tried:\s*(.*?))?;\s*owner:\s*(.+)$", re.M)
 
 
-def ratio_range(base, run, n=2000, seed=7):
-    rng = random.Random(seed)
-    paired = len(base) == len(run)
+def lcg(seed):
+    while True:
+        seed = (seed * 1664525 + 1013904223) & 0xFFFFFFFF
+        yield seed / 4294967296
+
+
+def ratio_range(base, run, n=2000):
+    # Paired reps (run alternately with the base) are judged on their rep-by-rep ratios: the bootstrap range of
+    # the median ratio, in logs, with Lede's seeded generator, so the same run gets the same verdict anywhere.
+    # A base rep of 0 counts as doubled when the run's isn't 0, unchanged when it is.
+    if len(base) == len(run):
+        ratios = [r / b if b > 0 else 2 if r > 0 else 1 for b, r in zip(base, run)]
+        logs = [math.log(x) if x > 0 else -math.inf for x in ratios]
+        rand = lcg(42)
+        meds = sorted(statistics.median(logs[int(next(rand) * len(logs))] for _ in logs) for _ in range(n))
+        return math.exp(meds[int(n * 0.025)]), math.exp(meds[math.ceil(n * 0.975) - 1])
+    rng = random.Random(7)
     out = []
     for _ in range(n):
-        if paired:
-            idx = [rng.randrange(len(base)) for _ in base]
-            b, r = [base[i] for i in idx], [run[i] for i in idx]
-        else:
-            b, r = [rng.choice(base) for _ in base], [rng.choice(run) for _ in run]
+        b, r = [rng.choice(base) for _ in base], [rng.choice(run) for _ in run]
         mb = statistics.median(b)
         out.append(statistics.median(r) / mb if mb else float("inf"))
     out.sort()
     return out[int(0.025 * n)], out[int(0.975 * n) - 1]
 
 
-def judge(name, base, run, rel, limit, priced):
+def judge(name, base, run, rel, limit, priced, abs_=0):
     if run is None:
         return {"metric": name, "verdict": "missing"}
     lower = base.get("dir", "lower") == "lower"
@@ -129,7 +140,11 @@ def judge(name, base, run, rel, limit, priced):
     row = {"metric": name, "base": mb, "run": mr}
     if limit is not None and ((mr > limit) if lower else (mr < limit)):
         return {**row, "verdict": "limit", "limit": limit}
-    if base.get("kind", "time") in NOISY and len(b) > 1 and len(r) > 1:
+    if base.get("kind") == "limit":
+        v = "same"
+    elif abs(mr - mb) <= abs_:
+        v = "same"
+    elif base.get("kind", "time") in NOISY and len(b) > 1 and len(r) > 1:
         lo, hi = ratio_range(b, r)
         row["range"] = [round(lo, 4), round(hi, 4)]
         if not lower:
@@ -146,16 +161,18 @@ def judge(name, base, run, rel, limit, priced):
         worse = mr > mb if lower else mr < mb
         better = mr < mb if lower else mr > mb
         v = "worse" if worse else "better" if better else "same"
-    if v == "worse" and name in priced:
+    # An exact metric's prices cover only the growth they add up to; a noisy one's cover it while it lasts.
+    if v == "worse" and name in priced and (base.get("kind", "time") in NOISY or abs(mr - mb) <= priced[name]):
         v = "priced"
     return {**row, "verdict": v}
 
 
-def price_compare(base_path, run_path, noise_path=None, priced=()):
+def price_compare(base_path, run_path, noise_path=None, priced=None):
     base, run = json.load(open(base_path)), json.load(open(run_path))
-    rel = json.load(open(noise_path)).get("rel", {}) if noise_path else {}
+    noise = json.load(open(noise_path)) if noise_path else {}
+    rel, abs_ = noise.get("rel", {}), noise.get("abs", {})
     limits = {**base.get("limits", {}), **run.get("limits", {})}
-    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), set(priced))
+    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), priced or {}, abs_.get(n, 0))
             for n, m in base["metrics"].items()]
 
 
@@ -184,7 +201,7 @@ def main():
     pr = sub.add_parser("price").add_subparsers(dest="pcmd", required=True)
     pc = pr.add_parser("compare", help="judge a run against a baseline")
     pc.add_argument("base"); pc.add_argument("run")
-    pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}}")
+    pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}}")
     pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
     pc.add_argument("--json", action="store_true")
@@ -209,7 +226,13 @@ def main():
 
 
 def price_main(a):
-    priced = list(a.price) + ([r["metric"] for r in price_ledger(Path(a.run).resolve().parent, a.since)] if a.since else [])
+    num = lambda x: float(x.replace(",", ""))
+    priced = {m: math.inf for m in a.price}
+    for r in price_ledger(Path(a.run).resolve().parent, a.since) if a.since else []:
+        try:
+            priced[r["metric"]] = priced.get(r["metric"], 0) + abs(num(r["after"]) - num(r["before"]))
+        except ValueError:
+            priced[r["metric"]] = math.inf
     rows = price_compare(a.base, a.run, a.noise, priced)
     if a.json:
         print(json.dumps(rows))

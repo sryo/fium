@@ -39,7 +39,9 @@ A change lands only if it costs no more than before, unless the user accepts the
 - **K1** Commit before you measure, so every experiment can be reverted.
 - **K2** A bench writes `{"metrics": {name: {"dir": "lower"|"higher", "kind", "samples": [...]}}, "limits": {name: line}}`.
   - Exact kinds (count, bytes, quality, loc) are judged on any move.
-  - Noisy kinds (time, tokens) are judged on the bootstrap range of the median ratio against 1 ± noise. Noise comes from `bench/noise.json`, written by an A/A run, and defaults to 10%.
+  - Noisy kinds (time, tokens) are judged on the bootstrap range of the median ratio against 1 ± noise. Paired reps are judged on their rep-by-rep ratios. Noise comes from `bench/noise.json` (`{"rel": {metric: fraction}, "abs": {metric: amount}}`), written by an A/A run, and defaults to 10%; a move no bigger than `abs` is same.
+  - A `limit` kind is judged only against its limit.
+  - A price covers an exact metric's growth up to what its trailers add up to.
 - **K3** A worse, missing or limit verdict blocks the change. So does inconclusive: rerun with more reps.
 - **K4** Only the user sets a price. The agent tries three cheaper ways first, then proposes one trailer per number: `Price: <metric>; <before> -> <after>; buys: <what>; tried: <what>; owner: "<the user's words>", <date>`. The agent never writes the owner's words itself.
 - **K5** When the score is equal, less code wins (`git diff --shortstat`). Refresh the baseline only in its own commit.

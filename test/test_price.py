@@ -97,6 +97,39 @@ class Price(unittest.TestCase):
         self.assertEqual(v["b"]["verdict"], "missing")
         self.assertEqual(code, 1)
 
+    def test_paired_range_is_the_bootstrap_of_rep_by_rep_ratios(self):
+        # The same numbers through Lede's compare.mjs give [1.0500, 1.1650]: one judge, whichever runs it.
+        b = self.write("b.json", {"t": metric([10, 10.2, 9.9, 10.1, 10, 9.8, 10.3, 10])})
+        r = self.write("r.json", {"t": metric([10.9, 11.4, 10.2, 11.8, 10.5, 11.1, 12, 10.7])})
+        code, v = self.compare(b, r)
+        self.assertEqual(v["t"]["range"], [1.05, 1.165])
+        self.assertEqual(v["t"]["verdict"], "inconclusive")
+
+    def test_a_time_that_stays_at_zero_is_same(self):
+        b = self.write("b.json", {"t": metric([0, 0, 0, 0])})
+        r = self.write("r.json", {"t": metric([0, 0, 0, 0])})
+        code, out = run("price", "compare", "--json", b, r, cwd=self.d)
+        self.assertEqual(json.loads(out)[0]["verdict"], "same")
+        self.assertEqual(code, 0)
+
+    def test_a_time_that_falls_to_zero_is_better(self):
+        b = self.write("b.json", {"t": metric([3, 2, 3, 2])})
+        r = self.write("r.json", {"t": metric([0, 0, 0, 0])})
+        self.assertEqual(self.compare(b, r)[1]["t"]["verdict"], "better")
+
+    def test_a_gap_under_the_noise_files_abs_is_same(self):
+        b = self.write("b.json", {"t": metric([0.020, 0.021, 0.021, 0.020])})
+        r = self.write("r.json", {"t": metric([0.022, 0.023, 0.022, 0.023])})
+        n = self.d / "noise.json"
+        n.write_text(json.dumps({"rel": {"t": 0.1}, "abs": {"t": 0.05}}))
+        self.assertNotEqual(self.compare(b, r)[1]["t"]["verdict"], "same")
+        self.assertEqual(self.compare(b, r, "--noise", str(n))[1]["t"]["verdict"], "same")
+
+    def test_a_limit_kind_is_judged_only_against_its_limit(self):
+        b = self.write("b.json", {"h": metric([60000], dir="higher", kind="limit")}, limits={"h": 50000})
+        self.assertEqual(self.compare(b, self.write("r.json", {"h": metric([55000], dir="higher", kind="limit")}))[1]["h"]["verdict"], "same")
+        self.assertEqual(self.compare(b, self.write("r2.json", {"h": metric([40000], dir="higher", kind="limit")}))[1]["h"]["verdict"], "limit")
+
 
 class Ledger(unittest.TestCase):
     def test_trailers_excuse_their_metric_since(self):
@@ -114,6 +147,11 @@ class Ledger(unittest.TestCase):
             v = {r["metric"]: r["verdict"] for r in json.loads(out)}
             self.assertEqual(v, {"calls": "priced", "bytes": "priced", "q": "worse"})
             self.assertEqual(code, 1)
+            # Growth past what the prices add up to is not covered by them.
+            (d / "r2.json").write_text(json.dumps({"metrics": {"calls": m(6, "count"), "bytes": m(12, "bytes"), "q": m(1, "count")}}))
+            code, out = run("price", "compare", "--json", "--since", "base", str(d / "b.json"), str(d / "r2.json"))
+            self.assertEqual({r["metric"]: r["verdict"] for r in json.loads(out)}["calls"], "worse")
+
 
 
 if __name__ == "__main__":
