@@ -1,4 +1,4 @@
-import os, subprocess, sys, tempfile, unittest, json
+import os, re, subprocess, sys, tempfile, unittest, json
 from pathlib import Path
 
 FIUM = Path(__file__).resolve().parent.parent / "fium"
@@ -148,6 +148,23 @@ class Check(unittest.TestCase):
         code, f = check(self.root)
         self.assertEqual(code, 0)
         self.assertIn("R5", rules(f, "warn"))
+
+
+ROOT = FIUM.parent
+
+
+class Docs(unittest.TestCase):
+    def test_every_cited_rule_id_exists(self):
+        ids = set(re.findall(r"\*\*([A-Z]\d+)\b", (ROOT / "RULES.md").read_text()))
+        for doc in ("skills/fium/SKILL.md", "AGENTS.md"):
+            cited = set(re.findall(r"\b([A-Z]\d+)\b", (ROOT / doc).read_text()))
+            self.assertEqual(cited - ids, set(), doc)
+
+    def test_help_describes_every_subcommand(self):
+        out = subprocess.run([sys.executable, str(FIUM), "--help"], capture_output=True, text=True).stdout
+        cmds = re.search(r"\{(.+?)\}", out).group(1).split(",")
+        for c in cmds:
+            self.assertRegex(out, rf"(?m)^\s+{c}\s+\S", c)
 
 
 if __name__ == "__main__":

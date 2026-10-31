@@ -362,7 +362,7 @@ def scope_main(a):
 def main():
     ap = argparse.ArgumentParser(prog="fium")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("check")
+    c = sub.add_parser("check", help="check a project against the ✓ rules in RULES.md; exit 1 on an error")
     c.add_argument("path", nargs="?", default=".")
     c.add_argument("--all", action="store_true", help="check every git repo directly under path")
     c.add_argument("--json", action="store_true")
@@ -370,8 +370,9 @@ def main():
     sv.add_argument("path", nargs="?", default="~/Documents")
     sv.add_argument("--min", type=int, default=3, help="repos a section must appear in to count as drift")
     sv.add_argument("--json", action="store_true")
-    pr = sub.add_parser("price").add_subparsers(dest="pcmd", required=True)
-    pc = pr.add_parser("compare", help="judge a run against a baseline")
+    pr = sub.add_parser("price", help="judge what a change costs against a baseline").add_subparsers(dest="pcmd", required=True)
+    pc = pr.add_parser("compare", help="judge a run against a baseline",
+                     epilog="exit 0: lands; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
     pc.add_argument("base"); pc.add_argument("run")
     pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}}")
     pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")

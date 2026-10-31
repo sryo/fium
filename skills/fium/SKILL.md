@@ -3,7 +3,7 @@ name: fium
 description: How the user wants every project built, measured and improved. Use when they want to start a new project ("I want to make something that does X"), bring an existing project in line, add benchmarks or cost pricing to one, write or fix a README/GOALS.md/AGENTS.md, or judge whether a change made anything cost more (tokens, calls, time, bytes, LOC).
 ---
 
-The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids (P4, R2, K4…). The aim (P) is simple, natural ways of doing things that are cheap on resources and reasonably fast, and that never intrude on the user.
+The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids (P1, R2, K4…). The aim (P) is simple, natural ways of doing things that are cheap on resources and reasonably fast, and that never intrude on the user.
 
 ## Start a new project
 1. Ask only what you can't infer: who it's for, the job it does, and what it has to beat. Name it in plain lowercase.
@@ -29,8 +29,8 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 
 ## Judge a change
 1. Run the bench, then `fium price compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`.
-2. If the verdict is better or same, land it. If it's inconclusive, rerun with more reps. If it's worse, try three cheaper ways. If one is still worse, propose a `Price:` trailer with the numbers and ask the user (K4). Never cross a limit.
-3. Before a live run, state its token cost and how many reps you'll buy (L1, L2), and predict each verdict (L5).
+2. If the verdict is better or same, land it. If it's inconclusive (exit 3), rerun with more reps. If it's worse, try three cheaper ways. If one is still worse, propose a `Price:` trailer with the numbers and ask the user (K4). Never cross a limit.
+3. Before a live run, state its token cost and how many reps you'll buy (L1, L2), predict each verdict (L5), and run only the tasks `fium scope <base>..HEAD` names (L6).
 4. A stale verdict means the run measured another commit or a dirty tree. Commit, then rerun on HEAD (K1, K3).
 
 ## Learn from past sessions (S)
