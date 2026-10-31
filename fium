@@ -99,6 +99,7 @@ def check(root):
 # noisy kinds (time, tokens) judge the bootstrap 95% range of the run/base median ratio against 1 ± rel.
 # A limit kind is judged only against its limit. A move no bigger than the noise file's abs for that metric is same.
 import math, random, statistics, subprocess
+from fnmatch import fnmatch
 
 MIN_N = 5
 NOISY = {"time", "tokens"}
@@ -185,21 +186,24 @@ def price_compare(base_path, run_path, noise_path=None, priced=None):
             for n, m in base["metrics"].items()]
 
 
-PRICING_FILE = re.compile(r"(^|/)(noise\.json|test_[^/]*|[^/]*[._]test\.[^/]*)$")
+INERT = ["README.md", "GOALS.md", "AGENTS.md", "CLAUDE.md", "LICENSE", "test/*", "tests/*", "*noise.json", "*baseline.json"]
 
 
-def only_pricing_since(repo, sha):
-    # A price is committed after the run it prices (K4), so commits that only carry a trailer
-    # and touch noise or test files leave the measured code as the run saw it.
-    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
-    revs = git("rev-list", f"{sha}..HEAD")
-    if revs.returncode or git("merge-base", "--is-ancestor", sha, "HEAD").returncode:
-        return False
-    for rev in revs.stdout.split():
-        files = git("diff-tree", "--no-commit-id", "--name-only", "-r", rev).stdout.split()
-        if not TRAILER.search(git("log", "-1", "--format=%B", rev).stdout) or not all(PRICING_FILE.search(f) for f in files):
-            return False
-    return True
+def git(repo, *a):
+    return subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+
+
+def changed_since(repo, rev):
+    # None when rev isn't an ancestor of HEAD: then nothing can be carried over.
+    if git(repo, "merge-base", "--is-ancestor", rev, "HEAD").returncode:
+        return None
+    return git(repo, "diff", "--name-only", rev, "HEAD").stdout.split()
+
+
+def inert_globs(repo):
+    # Agent-facing docs (SKILL.md, references/) change what a run measures, so they are never inert by default.
+    p = Path(repo) / "bench" / "inert"
+    return [l.strip() for l in p.read_text().splitlines() if l.strip() and not l.startswith("#")] if p.exists() else INERT
 
 
 def stale_row(run_path, repo):
@@ -209,9 +213,15 @@ def stale_row(run_path, repo):
     if not sha:
         return {"metric": "(commit)", "verdict": "unstamped"}
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    if len(sha) < 7 or (not head.startswith(sha) and not only_pricing_since(repo, sha)) or run.get("dirty"):
-        return {"metric": "(commit)", "base": head[:12] or None, "run": sha[:12] + ("+dirty" if run.get("dirty") else ""), "verdict": "stale"}
-    return None
+    row = {"metric": "(commit)", "base": head[:12] or None, "run": sha[:12] + ("+dirty" if run.get("dirty") else "")}
+    if len(sha) < 7 or run.get("dirty"):
+        return {**row, "verdict": "stale"}
+    if head.startswith(sha):
+        return None
+    files, globs = changed_since(repo, sha), inert_globs(repo)
+    if files is not None and all(any(fnmatch(f, g) for g in globs) for f in files):
+        return {**row, "verdict": "carried"}
+    return {**row, "verdict": "stale"}
 
 
 def price_ledger(repo, since=None):
@@ -278,6 +288,35 @@ def survey_main(a):
     print("never cited: " + (", ".join(s["uncited"]) or "none"))
 
 
+def scope(repo, revs, affects):
+    # Which bench tasks a change can move. A file no rule matches could move anything, so it means all.
+    rules = json.load(open(affects))["rules"]
+    base = revs.split("..")[0]
+    files = changed_since(repo, base)
+    if files is None:
+        return {"tasks": "*", "why": {base: "not an ancestor of HEAD"}}
+    tasks, why = set(), {}
+    for f in files:
+        hit = next((r["tasks"] for r in rules if any(fnmatch(f, g) for g in r["files"])), None)
+        if hit is None and any(fnmatch(f, g) for g in inert_globs(repo)):
+            hit = "none"
+        why[f] = hit if hit is not None else "*"
+        if why[f] == "*":
+            tasks = "*"
+        elif why[f] != "none" and tasks != "*":
+            tasks |= set(why[f])
+    return {"tasks": tasks if tasks == "*" else sorted(tasks), "why": why}
+
+
+def scope_main(a):
+    affects = a.affects or str(Path(a.repo) / "bench" / "affects.json")
+    res = scope(a.repo, a.revs, affects)
+    if a.json:
+        print(json.dumps(res, indent=2))
+    else:
+        print("all tasks" if res["tasks"] == "*" else " ".join(res["tasks"]) or "no tasks: nothing a bench measures changed")
+
+
 def main():
     ap = argparse.ArgumentParser(prog="fium")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -297,7 +336,14 @@ def main():
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
     pc.add_argument("--repo", help="repo whose Price: trailers --since reads (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
+    sc = sub.add_parser("scope", help="which bench tasks a change can move")
+    sc.add_argument("revs", help="base..HEAD")
+    sc.add_argument("--repo", default=".")
+    sc.add_argument("--affects", help="rules file (default: <repo>/bench/affects.json)")
+    sc.add_argument("--json", action="store_true")
     a = ap.parse_args()
+    if a.cmd == "scope":
+        return scope_main(a)
     if a.cmd == "price":
         return price_main(a)
     if a.cmd == "survey":
@@ -338,7 +384,9 @@ def price_main(a):
     vs = {r["verdict"] for r in rows}
     if stale and not a.json:
         fix = ("stamp the run with \"commit\": git rev-parse HEAD and \"dirty\": whether git status --porcelain is non-empty"
-               if stale["verdict"] == "unstamped" else "commit, then rerun the bench on HEAD")
+               if stale["verdict"] == "unstamped" else
+               "only inert files (bench/inert) changed since the run, so its numbers stand" if stale["verdict"] == "carried" else
+               "commit, then rerun the bench on HEAD (or list the changed files in bench/inert if no bench reads them)")
         print(f"  {stale['verdict']}: {fix}", file=sys.stderr)
     sys.exit(1 if vs & {"worse", "limit", "missing", "stale"} else 3 if "inconclusive" in vs else 0)
 

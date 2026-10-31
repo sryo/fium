@@ -178,7 +178,7 @@ class Stale(unittest.TestCase):
         g = lambda *a: subprocess.run(["git", "-C", self.tmp.name, *a], capture_output=True, text=True, check=True).stdout.strip()
         g("init", "-q"); g("config", "user.email", "a@b"); g("config", "user.name", "a")
         g("commit", "-q", "--allow-empty", "-m", "old"); self.old = g("rev-parse", "HEAD")
-        g("commit", "-q", "--allow-empty", "-m", "new"); self.head = g("rev-parse", "HEAD")
+        (self.d / "app.py").write_text("x"); g("add", "app.py"); g("commit", "-q", "-m", "new"); self.head = g("rev-parse", "HEAD")
         (self.d / "b.json").write_text(json.dumps({"metrics": {"calls": metric([4], kind="count")}}))
 
     def tearDown(self):
@@ -209,16 +209,52 @@ class Stale(unittest.TestCase):
         (self.d / "bench").mkdir()
         (self.d / "bench" / "noise.json").write_text("{}")
         g("add", "bench"); g("commit", "-q", "-m", "p\n\nPrice: calls; 4 -> 5; buys: a; owner: \"ok\", 2026-10-31")
-        self.assertNotIn("(commit)", self.compare(commit=self.head)[1])
+        code, v = self.compare(commit=self.head)
+        self.assertEqual((v["(commit)"]["verdict"], code), ("carried", 0))
         (self.d / "code.py").write_text("x")
         g("add", "code.py"); g("commit", "-q", "-m", "q\n\nPrice: calls; 4 -> 5; buys: a; owner: \"ok\", 2026-10-31")
         self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "stale")
+
+    def test_docs_carry_a_run_but_skill_docs_do_not(self):
+        g = lambda *a: subprocess.run(["git", "-C", self.tmp.name, *a], capture_output=True, check=True)
+        (self.d / "README.md").write_text("x"); (self.d / "tests").mkdir(); (self.d / "tests" / "a.py").write_text("x")
+        g("add", "README.md", "tests"); g("commit", "-q", "-m", "docs")
+        self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "carried")
+        self.assertEqual(self.compare(commit=self.head, dirty=True)[1]["(commit)"]["verdict"], "stale")
+        (self.d / "SKILL.md").write_text("x"); g("add", "SKILL.md"); g("commit", "-q", "-m", "skill")
+        self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "stale")
+
+    def test_a_bench_inert_file_replaces_the_defaults(self):
+        g = lambda *a: subprocess.run(["git", "-C", self.tmp.name, *a], capture_output=True, check=True)
+        (self.d / "bench").mkdir(); (self.d / "bench" / "inert").write_text("# docs\nnotes/*\nbench/inert\n")
+        (self.d / "notes").mkdir(); (self.d / "notes" / "n.md").write_text("x")
+        g("add", "bench", "notes"); g("commit", "-q", "-m", "n")
+        self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "carried")
 
     def test_an_unstamped_run_is_flagged_but_does_not_block(self):
         code, v = self.compare()
         self.assertEqual(v["(commit)"]["verdict"], "unstamped")
         self.assertEqual(code, 0)
 
+
+class Scope(unittest.TestCase):
+    def test_scope_unions_tasks_and_fails_safe(self):
+        with tempfile.TemporaryDirectory() as t:
+            d = Path(t)
+            g = lambda *a: subprocess.run(["git", "-C", t, *a], capture_output=True, check=True)
+            g("init", "-q"); g("config", "user.email", "a@b"); g("config", "user.name", "a")
+            g("commit", "-q", "--allow-empty", "-m", "base"); g("tag", "base")
+            (d / "bench").mkdir()
+            (d / "bench" / "affects.json").write_text(json.dumps({"rules": [
+                {"files": ["lib/*.js"], "tasks": ["a", "b"]}, {"files": ["cap.py"], "tasks": ["c"]},
+                {"files": ["bench/*"], "tasks": "none"}, {"files": ["SKILL.md"], "tasks": "*"}]}))
+            (d / "lib").mkdir(); (d / "lib" / "x.js").write_text("x"); (d / "cap.py").write_text("x"); (d / "README.md").write_text("x")
+            g("add", "-A"); g("commit", "-q", "-m", "c")
+            sc = lambda: json.loads(run("scope", "--json", "base..HEAD", "--repo", t)[1])
+            self.assertEqual(sc()["tasks"], ["a", "b", "c"])
+            (d / "other.py").write_text("x"); g("add", "-A"); g("commit", "-q", "-m", "d")
+            self.assertEqual(sc()["tasks"], "*")
+            self.assertEqual(sc()["why"]["other.py"], "*")
 
 
 if __name__ == "__main__":
