@@ -28,7 +28,7 @@ How every project here is laid out, measured and improved. Each rule has an id f
 
 ## README (R)
 A README is for someone deciding whether they want this, and then using it. It says why it's useful and how to use it, in plain words. Use rooms, avis and perch as models.
-- **R1 ✓** The first line is `# name`, the repo name in lowercase. A skill you invoke may use `# /name`.
+- **R1 ✓** The first line is `# name`, the repo name in lowercase. A skill you invoke may use `# /name`. A logo may stand in for it.
 - **R2 ✓** The opener is one or two sentences on what it lets you do and why you'd want it. Use second person, short sentences, no hype or jargon. Describe limits by what the user sees, not by how it works inside.
 - **R3 ✓** Then `## Install`, the shortest way to get it, and `## Use`, the few things a person actually types. Add `## Works with` and `## Known gaps` only when they have something to say.
 - **R4 ✓** No badges.

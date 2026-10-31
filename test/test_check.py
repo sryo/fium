@@ -154,6 +154,16 @@ class Check(unittest.TestCase):
         _, f = check(self.root)
         self.assertIn("R3", rules(f, "error"))
 
+    def test_a_logo_block_may_open_the_readme(self):
+        logo = '<p align="center">\n  <picture>\n    <source srcset="d.svg">\n    <img src="l.svg" alt="demo">\n  </picture>\n</p>\n\n'
+        make(self.root)
+        for readme in (logo + README, logo + README.split("\n", 2)[2], "![demo](logo.png)\n\n" + README):
+            (self.root / "README.md").write_text(readme)
+            _, f = check(self.root)
+            self.assertFalse({"R1", "R2"} & rules(f), readme)
+        (self.root / "README.md").write_text(logo + "Some tagline.\n\n## Install\nx\n\n## Use\ny\n")
+        self.assertIn("R2", rules(check(self.root)[1]))
+
     def test_slash_title_allowed(self):
         make(self.root, **{"README.md": README.replace("# demo", "# /demo")})
         _, f = check(self.root)

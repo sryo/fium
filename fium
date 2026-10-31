@@ -70,9 +70,13 @@ def check_readme(root):
     name = repo_name(root)
     out = []
     lines = text.splitlines()
-    if not lines or lines[0].strip() not in (f"# {name}", f"# /{name}"):
+    # A logo (HTML or an image) may open the README; the title, if any, follows it.
+    logo = next((i for i, l in enumerate(lines) if not re.match(r"\s*(<|!\[|$)", l)), len(lines))
+    lines = lines[logo:]
+    titled = bool(lines) and lines[0].strip() in (f"# {name}", f"# /{name}")
+    if not titled and not logo:
         out.append(finding("R1", "error", "README.md", f"first line should be '# {name}'", f"set the title to '# {name}'"))
-    opener = next((l for l in lines[1:] if l.strip()), "")
+    opener = next((l for l in lines[titled:] if l.strip()), "")
     if not re.match(rf"^/?{re.escape(name)}\b", opener, re.I):
         out.append(finding("R2", "warn", "README.md", "opener should start with the plain name and say what it does",
                            f"'{name} does X.' in one sentence"))
