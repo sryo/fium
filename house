@@ -84,6 +84,93 @@ def check(root):
     return check_files(root) + check_goals(root) + check_readme(root)
 
 
+# ---- price: judge a change's cost against a baseline ----
+# A run file: {"metrics": {name: {"dir": "lower"|"higher", "kind": time|tokens|count|bytes|quality|loc, "samples": [...]}},
+#              "limits": {name: hard_max_or_min}}. Deterministic kinds (count, bytes, quality, loc) judge any move;
+# noisy kinds (time, tokens) judge the bootstrap 95% range of the run/base median ratio against 1 ± rel.
+import random, statistics, subprocess
+
+NOISY = {"time", "tokens"}
+DEFAULT_REL = 0.10
+TRAILER = re.compile(r"^(Price|Bench-Accepted):\s*([^;]+);\s*([^;]+?)\s*->\s*([^;]+?);\s*buys:\s*(.*?)(?:;\s*tried:\s*(.*?))?;\s*owner:\s*(.+)$", re.M)
+
+
+def ratio_range(base, run, n=2000, seed=7):
+    rng = random.Random(seed)
+    paired = len(base) == len(run)
+    out = []
+    for _ in range(n):
+        if paired:
+            idx = [rng.randrange(len(base)) for _ in base]
+            b, r = [base[i] for i in idx], [run[i] for i in idx]
+        else:
+            b, r = [rng.choice(base) for _ in base], [rng.choice(run) for _ in run]
+        mb = statistics.median(b)
+        out.append(statistics.median(r) / mb if mb else float("inf"))
+    out.sort()
+    return out[int(0.025 * n)], out[int(0.975 * n) - 1]
+
+
+def judge(name, base, run, rel, limit, priced):
+    if run is None:
+        return {"metric": name, "verdict": "missing"}
+    lower = base.get("dir", "lower") == "lower"
+    b, r = base["samples"], run["samples"]
+    mb, mr = statistics.median(b), statistics.median(r)
+    row = {"metric": name, "base": mb, "run": mr}
+    if limit is not None and ((mr > limit) if lower else (mr < limit)):
+        return {**row, "verdict": "limit", "limit": limit}
+    if base.get("kind", "time") in NOISY and len(b) > 1 and len(r) > 1:
+        lo, hi = ratio_range(b, r)
+        row["range"] = [round(lo, 4), round(hi, 4)]
+        if not lower:
+            lo, hi = 1 / hi if hi else float("inf"), 1 / lo if lo else float("inf")
+        if lo > 1 + rel:
+            v = "worse"
+        elif hi < 1 - rel:
+            v = "better"
+        elif lo >= 1 - rel and hi <= 1 + rel:
+            v = "same"
+        else:
+            v = "inconclusive"
+    else:
+        worse = mr > mb if lower else mr < mb
+        better = mr < mb if lower else mr > mb
+        v = "worse" if worse else "better" if better else "same"
+    if v == "worse" and name in priced:
+        v = "priced"
+    return {**row, "verdict": v}
+
+
+def price_compare(base_path, run_path, noise_path=None, priced=()):
+    base, run = json.load(open(base_path)), json.load(open(run_path))
+    rel = json.load(open(noise_path)).get("rel", {}) if noise_path else {}
+    limits = {**base.get("limits", {}), **run.get("limits", {})}
+    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), set(priced))
+            for n, m in base["metrics"].items()]
+
+
+def price_ledger(repo, since=None):
+    rng = f"{since}..HEAD" if since else "HEAD"
+    log = subprocess.run(["git", "-C", str(repo), "log", "--format=%h%x00%B%x01", rng], capture_output=True, text=True).stdout
+    rows = []
+    for entry in log.split("\x01"):
+        if "\x00" not in entry:
+            continue
+        sha, body = entry.strip().split("\x00", 1)
+        for m in TRAILER.finditer(body):
+            rows.append({"commit": sha, "metric": m[2].strip(), "before": m[3].strip(), "after": m[4].strip(),
+                         "buys": m[5].strip(), "tried": (m[6] or "").strip(), "owner": m[7].strip()})
+    return rows
+
+
+def price_loc(repo, base="main"):
+    out = subprocess.run(["git", "-C", str(repo), "diff", "--numstat", base], capture_output=True, text=True).stdout
+    add = sum(int(a) for a, *_ in (l.split("\t") for l in out.splitlines()) if a.isdigit())
+    rem = sum(int(d) for _, d, *_ in (l.split("\t") for l in out.splitlines()) if d.isdigit())
+    return {"added": add, "removed": rem, "net": add - rem}
+
+
 def main():
     ap = argparse.ArgumentParser(prog="house")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -91,7 +178,20 @@ def main():
     c.add_argument("path", nargs="?", default=".")
     c.add_argument("--all", action="store_true", help="check every git repo directly under path")
     c.add_argument("--json", action="store_true")
+    pr = sub.add_parser("price").add_subparsers(dest="pcmd", required=True)
+    pc = pr.add_parser("compare", help="judge a run against a baseline")
+    pc.add_argument("base"); pc.add_argument("run")
+    pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}}")
+    pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")
+    pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
+    pc.add_argument("--json", action="store_true")
+    pl = pr.add_parser("ledger", help="list accepted prices from commit trailers")
+    pl.add_argument("repo", nargs="?", default="."); pl.add_argument("--since"); pl.add_argument("--json", action="store_true")
+    po = pr.add_parser("loc", help="lines added and removed against a base")
+    po.add_argument("repo", nargs="?", default="."); po.add_argument("--base", default="main")
     a = ap.parse_args()
+    if a.cmd == "price":
+        return price_main(a)
     base = Path(a.path).expanduser()
     if a.all:
         res = {d.name: check(d) for d in sorted(base.iterdir()) if (d / ".git").exists()}
@@ -107,6 +207,25 @@ def main():
                 print(f"  {f['level']} {f['rule']} {f['file']}: {f['msg']} -> {f['fix']}")
     flat = [f for fs in res.values() for f in fs] if a.all else res
     sys.exit(1 if any(f["level"] == "error" for f in flat) else 0)
+
+
+def price_main(a):
+    if a.pcmd == "ledger":
+        rows = price_ledger(a.repo, a.since)
+        print(json.dumps(rows) if a.json else "\n".join(f"{r['commit']} {r['metric']}: {r['before']} -> {r['after']} buys {r['buys']} ({r['owner']})" for r in rows))
+        return
+    if a.pcmd == "loc":
+        print(json.dumps(price_loc(a.repo, a.base)))
+        return
+    priced = list(a.price) + ([r["metric"] for r in price_ledger(".", a.since)] if a.since else [])
+    rows = price_compare(a.base, a.run, a.noise, priced)
+    if a.json:
+        print(json.dumps(rows))
+    else:
+        for r in rows:
+            print(f"{r['verdict']:>12}  {r['metric']}: {r.get('base')} -> {r.get('run')}" + (f"  range {r['range']}" if "range" in r else ""))
+    vs = {r["verdict"] for r in rows}
+    sys.exit(1 if vs & {"worse", "limit", "missing"} else 3 if "inconclusive" in vs else 0)
 
 
 if __name__ == "__main__":

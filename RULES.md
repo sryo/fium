@@ -46,12 +46,31 @@ A README is for the person deciding whether they want this and then using it. It
 - **L5** Batch fixes so that one live run checks several of them.
 - **L6** Every loop has an iteration cap. After 5 straight runs with no keep, stop or change approach. Don't grind.
 
-## Keep or revert (K)
+## Prices (K)
+Every change is priced: did it make anything cost more? A change that's better or the same lands. A change that's worse lands only if the user accepts the price, and never if it crosses a limit. One vocabulary everywhere:
+- **Metric:** anything a run measures. Each has a direction (lower or higher is better) and a kind.
+  - time and tokens are noisy.
+  - count, bytes, quality and loc are exact.
+- **Baseline:** `bench/baseline.json`, in the run format below. Refresh it only in its own commit.
+- **Noise:** `bench/noise.json`, `{rel: {metric: fraction}}`, written by an A/A run (the base against itself). The default is 10%.
+- **Limit:** a hard line in `baseline.json` `limits`. No price buys past it.
+- **Price:** a cost the user accepted, recorded as one commit trailer per number:
+  `Price: <metric>; <before> -> <after>; buys: <what it bought>; owner: "<the user's words>", <date>`.
+  Lede's `Bench-Accepted:` is read the same way.
+- **Verdict:** `house price compare` returns better, same, worse, inconclusive, priced, limit or missing.
+
+The rules:
 - **K1** Commit before you measure, so every experiment can be reverted.
-- **K2** Keep a change only if the metric is strictly better and the guard tests pass. An equal score with less code counts as a keep. Revert anything else.
-- **K3** The agent never edits the eval, the scorer or the baseline in the same change it is judged by. Refresh the baseline in its own Judge-Change commit, citing the runs.
-- **K4** Before refreshing, split every regression into fixable, guard-by-design or accepted cost. Accepted costs need repeated samples.
-- **K5** A coverage gain (working somewhere it didn't before) is in scope by default, never "a new feature".
+- **K2** A run writes `{"metrics": {name: {"dir", "kind", "samples": [...]}}}`. Each repo's bench writes this format, and `house price compare bench/baseline.json <run>` judges it.
+  - An exact metric is judged on any move.
+  - A noisy metric is judged on the bootstrap 95% range of the run/base median ratio, set against 1 ± noise. Paired reps run base and run alternately.
+- **K3** Worse, limit and missing block (exit 1). Inconclusive blocks too (exit 3): rerun with more reps, never land on it.
+- **K4** Only the user sets a price. An agent proposes the trailer with the before/after numbers, what it buys and three tries at a cheaper way, then quotes the user's own words. An agent never writes `owner:` without them.
+- **K5** Count LOC as a metric (`house price loc`). With an equal score, less code wins.
+- **K6** Prices add up. Before a release, read `house price ledger --since <last release>`. If any metric has grown more than 10% in total, the next work is a cheapening pass.
+- **K7** The agent never edits the eval, the scorer, the baseline or the noise file in the change being judged. Refreshing them takes a `Judge-Change: <why>` commit.
+- **K8** Before refreshing a baseline, sort every regression into fixable, guard-by-design or priced.
+- **K9** Not a price: a coverage gain, meaning working somewhere it didn't before. That is in scope by default.
 
 ## Insights (I)
 - **I1** Keep one append-only log per repo, `bench/experiments.jsonl`, with these fields: iter, ts, commit, task, metric, delta, guard, status (baseline|keep|discard|crash), tokens, wall_s, hypothesis. Disproven ideas get logged too.

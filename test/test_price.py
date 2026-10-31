@@ -1,0 +1,121 @@
+import json, subprocess, sys, tempfile, unittest
+from pathlib import Path
+
+HOUSE = Path(__file__).resolve().parent.parent / "house"
+
+
+def run(*args, cwd=None):
+    r = subprocess.run([sys.executable, str(HOUSE), *args], capture_output=True, text=True, cwd=cwd)
+    return r.returncode, r.stdout
+
+
+def metric(samples, dir="lower", kind="time"):
+    return {"dir": dir, "kind": kind, "samples": samples}
+
+
+class Price(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write(self, name, metrics, **extra):
+        p = self.d / name
+        p.write_text(json.dumps({"metrics": metrics, **extra}))
+        return str(p)
+
+    def compare(self, base, run_, *more):
+        code, out = run("price", "compare", "--json", base, run_, *more, cwd=self.d)
+        return code, {m["metric"]: m for m in json.loads(out)}
+
+    def test_same_within_noise(self):
+        b = self.write("b.json", {"t": metric([100, 101, 99, 100, 102, 98, 100, 101])})
+        r = self.write("r.json", {"t": metric([101, 100, 100, 99, 101, 99, 100, 102])})
+        code, v = self.compare(b, r)
+        self.assertEqual(v["t"]["verdict"], "same")
+        self.assertEqual(code, 0)
+
+    def test_clear_time_regression_is_worse(self):
+        b = self.write("b.json", {"t": metric([100, 101, 99, 100, 102, 98, 100, 101])})
+        r = self.write("r.json", {"t": metric([130, 131, 129, 130, 132, 128, 130, 131])})
+        code, v = self.compare(b, r)
+        self.assertEqual(v["t"]["verdict"], "worse")
+        self.assertEqual(code, 1)
+
+    def test_clear_improvement(self):
+        b = self.write("b.json", {"t": metric([100] * 6)})
+        r = self.write("r.json", {"t": metric([70] * 6)})
+        _, v = self.compare(b, r)
+        self.assertEqual(v["t"]["verdict"], "better")
+
+    def test_noisy_borderline_is_inconclusive_and_blocks(self):
+        b = self.write("b.json", {"t": metric([100, 140, 80, 120, 90])})
+        r = self.write("r.json", {"t": metric([115, 150, 95, 135, 100])})
+        code, v = self.compare(b, r)
+        self.assertEqual(v["t"]["verdict"], "inconclusive")
+        self.assertEqual(code, 3)
+
+    def test_counts_any_increase_is_worse(self):
+        b = self.write("b.json", {"calls": metric([4], kind="count")})
+        r = self.write("r.json", {"calls": metric([5], kind="count")})
+        _, v = self.compare(b, r)
+        self.assertEqual(v["calls"]["verdict"], "worse")
+
+    def test_quality_higher_is_better(self):
+        b = self.write("b.json", {"q": metric([0.9], dir="higher", kind="quality")})
+        r = self.write("r.json", {"q": metric([0.95], dir="higher", kind="quality")})
+        _, v = self.compare(b, r)
+        self.assertEqual(v["q"]["verdict"], "better")
+
+    def test_noise_file_widens_rel(self):
+        b = self.write("b.json", {"t": metric([100] * 6)})
+        r = self.write("r.json", {"t": metric([115] * 6)})
+        n = self.write("noise.json", {}, rel={"t": 0.2})
+        _, v = self.compare(b, r, "--noise", n)
+        self.assertEqual(v["t"]["verdict"], "same")
+
+    def test_limit_is_never_crossed_even_if_priced(self):
+        b = self.write("b.json", {"bytes": metric([900], kind="bytes")}, limits={"bytes": 1000})
+        r = self.write("r.json", {"bytes": metric([1100], kind="bytes")})
+        code, v = self.compare(b, r, "--price", "bytes")
+        self.assertEqual(v["bytes"]["verdict"], "limit")
+        self.assertEqual(code, 1)
+
+    def test_priced_regression_passes(self):
+        b = self.write("b.json", {"calls": metric([4], kind="count")})
+        r = self.write("r.json", {"calls": metric([5], kind="count")})
+        code, v = self.compare(b, r, "--price", "calls")
+        self.assertEqual(v["calls"]["verdict"], "priced")
+        self.assertEqual(code, 0)
+
+    def test_missing_metric_fails(self):
+        b = self.write("b.json", {"a": metric([1], kind="count"), "b": metric([1], kind="count")})
+        r = self.write("r.json", {"a": metric([1], kind="count")})
+        code, v = self.compare(b, r)
+        self.assertEqual(v["b"]["verdict"], "missing")
+        self.assertEqual(code, 1)
+
+
+class Ledger(unittest.TestCase):
+    def test_reads_price_and_legacy_trailers(self):
+        with tempfile.TemporaryDirectory() as t:
+            g = lambda *a: subprocess.run(["git", "-C", t, *a], capture_output=True, check=True)
+            g("init", "-q"); g("config", "user.email", "a@b"); g("config", "user.name", "a")
+            g("commit", "-q", "--allow-empty", "-m", "base")
+            g("commit", "-q", "--allow-empty", "-m", "x\n\nPrice: calls; 4 -> 5; buys: retries; owner: \"ok\", 2026-10-31")
+            g("commit", "-q", "--allow-empty", "-m", "y\n\nBench-Accepted: bytes; 10 -> 12; buys: icons; owner: \"fine\", 2026-10-30")
+            g("commit", "-q", "--allow-empty", "-m", "z\n\nPrice: gzip; 1 -> 2; buys: a; with semicolons; tried: b; c; owner: \"yes\", 2026-10-31")
+            code, out = run("price", "ledger", "--json", t)
+            rows = json.loads(out)
+            self.assertEqual(code, 0)
+            self.assertEqual(sorted(r["metric"] for r in rows), ["bytes", "calls", "gzip"])
+            gz = [r for r in rows if r["metric"] == "gzip"][0]
+            self.assertEqual(gz["buys"], "a; with semicolons")
+            self.assertEqual(gz["tried"], "b; c")
+            self.assertTrue(all(r["owner"] for r in rows))
+
+
+if __name__ == "__main__":
+    unittest.main()
