@@ -185,6 +185,23 @@ def price_compare(base_path, run_path, noise_path=None, priced=None):
             for n, m in base["metrics"].items()]
 
 
+PRICING_FILE = re.compile(r"(^|/)(noise\.json|test_[^/]*|[^/]*[._]test\.[^/]*)$")
+
+
+def only_pricing_since(repo, sha):
+    # A price is committed after the run it prices (K4), so commits that only carry a trailer
+    # and touch noise or test files leave the measured code as the run saw it.
+    git = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+    revs = git("rev-list", f"{sha}..HEAD")
+    if revs.returncode or git("merge-base", "--is-ancestor", sha, "HEAD").returncode:
+        return False
+    for rev in revs.stdout.split():
+        files = git("diff-tree", "--no-commit-id", "--name-only", "-r", rev).stdout.split()
+        if not TRAILER.search(git("log", "-1", "--format=%B", rev).stdout) or not all(PRICING_FILE.search(f) for f in files):
+            return False
+    return True
+
+
 def stale_row(run_path, repo):
     # A run says which commit it measured, so an old or dirty run can't pass for this change (K1, K2).
     run = json.load(open(run_path))
@@ -192,7 +209,7 @@ def stale_row(run_path, repo):
     if not sha:
         return {"metric": "(commit)", "verdict": "unstamped"}
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    if len(sha) < 7 or not head.startswith(sha) or run.get("dirty"):
+    if len(sha) < 7 or (not head.startswith(sha) and not only_pricing_since(repo, sha)) or run.get("dirty"):
         return {"metric": "(commit)", "base": head[:12] or None, "run": sha[:12] + ("+dirty" if run.get("dirty") else ""), "verdict": "stale"}
     return None
 

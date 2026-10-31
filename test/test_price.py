@@ -204,6 +204,16 @@ class Stale(unittest.TestCase):
         self.assertEqual(v["(commit)"]["verdict"], "stale")
         self.assertEqual(code, 1)
 
+    def test_a_price_committed_after_its_run_keeps_it_fresh(self):
+        g = lambda *a: subprocess.run(["git", "-C", self.tmp.name, *a], capture_output=True, check=True)
+        (self.d / "bench").mkdir()
+        (self.d / "bench" / "noise.json").write_text("{}")
+        g("add", "bench"); g("commit", "-q", "-m", "p\n\nPrice: calls; 4 -> 5; buys: a; owner: \"ok\", 2026-10-31")
+        self.assertNotIn("(commit)", self.compare(commit=self.head)[1])
+        (self.d / "code.py").write_text("x")
+        g("add", "code.py"); g("commit", "-q", "-m", "q\n\nPrice: calls; 4 -> 5; buys: a; owner: \"ok\", 2026-10-31")
+        self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "stale")
+
     def test_an_unstamped_run_is_flagged_but_does_not_block(self):
         code, v = self.compare()
         self.assertEqual(v["(commit)"]["verdict"], "unstamped")
