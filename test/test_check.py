@@ -149,6 +149,21 @@ class Check(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("R5", rules(f, "warn"))
 
+    def test_new_project_passes_check(self):
+        r = subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        root = Path(self.tmp.name) / "zebra"
+        self.assertTrue((root / ".git").exists())
+        self.assertEqual(os.readlink(root / "CLAUDE.md"), "AGENTS.md")
+        self.assertTrue((root / "bench" / "baseline.json").exists())
+        self.assertNotIn("NAME", (root / "README.md").read_text())
+        code, f = check(root)
+        self.assertEqual(rules(f, "error"), set())
+        self.assertEqual(code, 0)
+        again = subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)
+        self.assertNotEqual(again.returncode, 0)
+        self.assertIn("exists", again.stderr)
+
 
 ROOT = FIUM.parent
 

@@ -7,7 +7,7 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 
 ## Start a new project
 1. Ask only what you can't infer: who it's for, the job it does, and what it has to beat. Name it in plain lowercase.
-2. `mkdir ~/Documents/<name> && cd $_ && git init`, then copy `~/Documents/fium/templates/*` and replace NAME. Run `ln -s AGENTS.md CLAUDE.md`.
+2. `cd ~/Documents && fium/fium new <name>` makes the repo from the templates.
 3. Write GOALS.md first:
    - purpose
    - never traded

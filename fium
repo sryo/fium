@@ -330,6 +330,21 @@ def survey_main(a):
     print("never cited: " + (", ".join(s["uncited"]) or "none"))
 
 
+def new(name):
+    # The templates with NAME filled in, a git repo, and CLAUDE.md -> AGENTS.md (F1-F5).
+    root = Path(name).resolve()
+    if root.exists():
+        sys.exit(f"fium new: {root} exists; pick another name or bring it in with fium check")
+    for src in (HOME / "templates").rglob("*"):
+        if src.is_file():
+            dst = root / src.relative_to(HOME / "templates")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(src.read_text().replace("NAME", root.name))
+    (root / "CLAUDE.md").symlink_to("AGENTS.md")
+    git(root, "init", "-q")
+    print(f"{root}: write GOALS.md first, then the README (skills/fium/SKILL.md)")
+
+
 def scope(repo, revs, affects):
     # Which bench tasks a change can move. A file no rule matches could move anything, so it means all.
     rules = json.load(open(affects))["rules"]
@@ -379,12 +394,15 @@ def main():
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
     pc.add_argument("--repo", help="repo whose Price: trailers --since reads (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
+    sub.add_parser("new", help="start a project from the templates").add_argument("name")
     sc = sub.add_parser("scope", help="which bench tasks a change can move")
     sc.add_argument("revs", help="base..HEAD")
     sc.add_argument("--repo", default=".")
     sc.add_argument("--affects", help="rules file (default: <repo>/bench/affects.json)")
     sc.add_argument("--json", action="store_true")
     a = ap.parse_args()
+    if a.cmd == "new":
+        return new(a.name)
     if a.cmd == "scope":
         return scope_main(a)
     if a.cmd == "price":
