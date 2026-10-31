@@ -36,7 +36,7 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **R6 ✓** The README doesn't drift from the code: prose names no env var, and each command and flag under `## Use` is in the CLI's source or `bench/readme-cli`. Prose timings and source paths warn.
 
 ## Design (D)
-- **D1 ✓** A repo with a UI may keep `DESIGN.md` in Google's format (templates/DESIGN.md). When it does, the front matter parses, every `{ref}` resolves and the `##` sections keep the spec's order, so agents and figma-cdp read one source that holds together.
+- **D1 ✓** A UI repo may keep `DESIGN.md` in Google's format (templates/DESIGN.md). Its front matter parses, its `{ref}`s resolve and its `##` sections keep the spec's order, so agents and figma-cdp read one coherent source.
 
 ## Live runs (L)
 - **L1** Before a live run, state what it will cost in tokens, turns and wall time. Prices are never in dollars.
