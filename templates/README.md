@@ -1,6 +1,6 @@
 # NAME
 
-NAME does X, in one sentence. A second sentence says who it's for.
+NAME lets you DO THING, so you don't have to PAIN. One more sentence on what it's like to use, in the user's terms.
 
 ## Install
 ```bash
@@ -8,10 +8,7 @@ one command
 ```
 
 ## Use
-The smallest example that works.
+The few commands or words a person actually types, with a short note on what each does.
 
 ## Works with
-- [sibling](https://github.com/sryo/sibling): how they fit together.
-
-## Known gaps
-- What doesn't work yet.
+- [sibling](https://github.com/sryo/sibling): what you get from using them together.

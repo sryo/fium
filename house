@@ -62,7 +62,7 @@ def check_readme(root):
     name = root.name.lower()
     out = []
     lines = text.splitlines()
-    if not lines or lines[0].strip() != f"# {name}":
+    if not lines or lines[0].strip() not in (f"# {name}", f"# /{name}"):
         out.append(finding("R1", "error", "README.md", f"first line should be '# {name}'", f"set the title to '# {name}'"))
     opener = next((l for l in lines[1:] if l.strip()), "")
     if not re.match(rf"^{re.escape(name)}\b", opener, re.I) or opener.startswith("`"):
@@ -72,6 +72,10 @@ def check_readme(root):
         out.append(finding("R3", "error", "README.md", "no '## Install' section", "add one command block under ## Install"))
     if re.search(r"shields\.io|badge", text, re.I):
         out.append(finding("R4", "warn", "README.md", "badges", "remove badges"))
+    dev = re.findall(r"^## (Development|Contributing|Architecture|Building|Build|How it works|Internals)\b", text, re.M | re.I)
+    if dev:
+        out.append(finding("R6", "warn", "README.md", "sections for builders, not users: " + ", ".join(dev),
+                           "move build, dev and internals to AGENTS.md; the README says why it's useful and how to use it"))
     return out
 
 

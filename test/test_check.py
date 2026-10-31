@@ -133,6 +133,17 @@ class Check(unittest.TestCase):
         out = json.loads(r.stdout)
         self.assertEqual(list(out), ["demo"])
 
+    def test_slash_title_allowed(self):
+        make(self.root, **{"README.md": README.replace("# demo", "# /demo")})
+        _, f = check(self.root)
+        self.assertNotIn("R1", rules(f))
+
+    def test_build_and_internals_sections_warn(self):
+        make(self.root, **{"README.md": README + "\n## Development\nnpm run build\n\n## Architecture\nx\n"})
+        code, f = check(self.root)
+        self.assertEqual(code, 0)
+        self.assertIn("R6", rules(f, "warn"))
+
 
 if __name__ == "__main__":
     unittest.main()

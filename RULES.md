@@ -30,11 +30,13 @@ Everything here serves one aim: natural, simple ways of getting things done that
 - **G3** KPIs live in GOALS.md, not in AGENTS.md. AGENTS.md says how the goals are met.
 
 ## README (R)
-- **R1 ✓** The first line is `# name`, in plain lowercase, the repo's name.
-- **R2 ✓** Then one sentence: "name does X". Use the plain name, without backticks.
-- **R3 ✓** `## Install` has one command block. After it come `## Use`, then `## Works with` (links to sibling projects), then `## Known gaps`, then `## Troubleshooting`, each only when it has content.
+A README is for the person deciding whether they want this and then using it. It says why it's useful and how it's used, clearly, and leaves out how it's built. Use rooms, avis and perch as models.
+- **R1 ✓** The first line is `# name`, the repo name in plain lowercase, or `# /name` for a skill you invoke.
+- **R2 ✓** The opener is one or two plain sentences on what it lets you do and why you'd want it ("rooms gives your AI agents their own browsers…"). Say what it does for the user, not what it is technically.
+- **R3 ✓** `## Install` is the shortest way to get it, usually one command. `## Use` gives the few commands or words a person actually types. Add `## Works with` for sibling projects and `## Known gaps` only when they have content.
 - **R4 ✓** No badges.
-- **R5** Write in the second person and the imperative, with short sentences and no hype. Say what the reader can do, not how it works inside.
+- **R5** Write in the second person, with short sentences and no hype or jargon. Explain a limit by what the user sees ("keeps working while your Mac is locked"), not by the mechanism behind it.
+- **R6 ✓** No build steps, dev setup, architecture or internals. Those go in AGENTS.md.
 
 ## Loops and pricing (L)
 - **L1** Price everything in tokens, turns and wall time, never dollars.
