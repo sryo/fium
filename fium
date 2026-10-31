@@ -455,9 +455,8 @@ def main():
     sv.add_argument("path", nargs="?", default="~/Documents")
     sv.add_argument("--min", type=int, default=3, help="repos a section must appear in to count as drift")
     sv.add_argument("--json", action="store_true")
-    pr = sub.add_parser("price", help="judge what a change costs against a baseline").add_subparsers(dest="pcmd", required=True)
-    pc = pr.add_parser("compare", help="judge a run against a baseline",
-                     epilog="exit 0: lands; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
+    pc = sub.add_parser("compare", help="judge what a change costs: a run against a baseline",
+                        epilog="exit 0: lands; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
     pc.add_argument("base", help="run file, or a commit whose run a past compare kept in ~/.fium/runs"); pc.add_argument("run")
     pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}}")
     pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")
@@ -476,8 +475,8 @@ def main():
         return new(a.name)
     if a.cmd == "scope":
         return scope_main(a)
-    if a.cmd == "price":
-        return price_main(a)
+    if a.cmd == "compare":
+        return compare_main(a)
     if a.cmd == "survey":
         return survey_main(a)
     base = Path(a.path).expanduser()
@@ -497,7 +496,7 @@ def main():
     sys.exit(1 if any(f["level"] == "error" for f in flat) else 0)
 
 
-def price_main(a):
+def compare_main(a):
     num = lambda x: float(x.replace(",", ""))
     priced = {m: math.inf for m in a.price}
     for r in price_ledger(a.repo or ".", a.since) if a.since else []:

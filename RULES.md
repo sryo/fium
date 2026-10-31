@@ -43,7 +43,7 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **L6** Run only the tasks `fium scope <base>..HEAD` names. It reads `bench/affects.json` (`{"rules": [{"files": [globs], "tasks": [...] | "*" | "none"}]}`, first match wins). A changed file no rule matches means every task, unless it is inert.
 
 ## Prices (K)
-A change lands only if it costs no more than before, unless the user accepts the price. A limit blocks it even then. `fium price compare bench/baseline.json <run>` makes the call.
+A change lands only if it costs no more than before, unless the user accepts the price. A limit blocks it even then. `fium compare bench/baseline.json <run>` makes the call.
 - **K1** Commit before you measure, so every experiment can be reverted.
 - **K2** A bench writes `{"metrics": {name: {"dir": "lower"|"higher", "kind", "samples": [...]}}, "limits": {name: line}}`.
   - Exact metrics are judged on any move. Time and tokens are noisy by default. Set `"noisy": true` on anything else that varies between identical runs, such as an agent's turns or a scorer's output.

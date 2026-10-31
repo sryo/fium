@@ -271,11 +271,11 @@ class Sleep(unittest.TestCase):
 
     def test_check_dry_run_lists_the_gates(self):
         out = self.sleep("check", "--dry-run", "--candidate", "cand.json")
-        for gate in ("python3 -m unittest", "test/budget.py", "replay", "price compare bench/baseline.json cand.json"):
+        for gate in ("python3 -m unittest", "test/budget.py", "replay", "compare bench/baseline.json cand.json"):
             self.assertIn(gate, out)
         out = self.sleep("check", "--dry-run")
         self.assertIn("replay", out)
-        self.assertNotIn("price compare", out)
+        self.assertNotIn("compare bench", out)
 
 
 if __name__ == "__main__":

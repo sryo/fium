@@ -508,7 +508,7 @@ def cmd_replay(a):
 def cmd_check(a):
     gates = CFG.get("gates", []) + [[sys.executable, os.path.abspath(__file__), "--repo", REPO, "replay"]]
     if a.candidate:
-        gates.append([sys.executable, FIUM, "price", "compare", a.baseline or "bench/baseline.json", a.candidate])
+        gates.append([sys.executable, FIUM, "compare", a.baseline or "bench/baseline.json", a.candidate])
     for g in gates:
         print("$ " + " ".join(g), flush=True)
         if not a.dry_run and subprocess.run(g, cwd=REPO).returncode:

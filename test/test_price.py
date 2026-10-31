@@ -28,8 +28,11 @@ class Price(unittest.TestCase):
         return str(p)
 
     def compare(self, base, run_, *more):
-        code, out = run("price", "compare", "--json", base, run_, *more, cwd=self.d)
+        code, out = run("compare", "--json", base, run_, *more, cwd=self.d)
         return code, {m["metric"]: m for m in json.loads(out)}
+
+    def test_compare_is_a_top_level_command(self):
+        self.assertEqual(run("price", "compare", "a", "b")[0], 2)
 
     def test_same_within_noise(self):
         b = self.write("b.json", {"t": metric([100, 101, 99, 100, 102, 98, 100, 101])})
@@ -140,7 +143,7 @@ class Price(unittest.TestCase):
     def test_a_time_that_stays_at_zero_is_same(self):
         b = self.write("b.json", {"t": metric([0, 0, 0, 0])})
         r = self.write("r.json", {"t": metric([0, 0, 0, 0])})
-        code, out = run("price", "compare", "--json", b, r, cwd=self.d)
+        code, out = run("compare", "--json", b, r, cwd=self.d)
         self.assertEqual(json.loads(out)[0]["verdict"], "same")
         self.assertEqual(code, 0)
 
@@ -175,13 +178,13 @@ class Ledger(unittest.TestCase):
             m = lambda v, k: {"dir": "lower", "kind": k, "samples": [v]}
             (d / "b.json").write_text(json.dumps({"metrics": {"calls": m(4, "count"), "bytes": m(10, "bytes"), "q": m(1, "count")}}))
             (d / "r.json").write_text(json.dumps({"metrics": {"calls": m(5, "count"), "bytes": m(12, "bytes"), "q": m(2, "count")}}))
-            code, out = run("price", "compare", "--json", "--since", "base", "--repo", t, str(d / "b.json"), str(d / "r.json"))
+            code, out = run("compare", "--json", "--since", "base", "--repo", t, str(d / "b.json"), str(d / "r.json"))
             v = {r["metric"]: r["verdict"] for r in json.loads(out)}
             self.assertEqual(v, {"calls": "priced", "bytes": "priced", "q": "worse", "(commit)": "unstamped"})
             self.assertEqual(code, 1)
             # Growth past what the prices add up to is not covered by them.
             (d / "r2.json").write_text(json.dumps({"metrics": {"calls": m(6, "count"), "bytes": m(12, "bytes"), "q": m(1, "count")}}))
-            code, out = run("price", "compare", "--json", "--since", "base", str(d / "b.json"), str(d / "r2.json"))
+            code, out = run("compare", "--json", "--since", "base", str(d / "b.json"), str(d / "r2.json"))
             self.assertEqual({r["metric"]: r["verdict"] for r in json.loads(out)}["calls"], "worse")
 
 
@@ -200,7 +203,7 @@ class Stale(unittest.TestCase):
 
     def compare(self, **stamp):
         (self.d / "r.json").write_text(json.dumps({"metrics": {"calls": metric([4], kind="count")}, **stamp}))
-        code, out = run("price", "compare", "--json", "b.json", "r.json", cwd=self.d)
+        code, out = run("compare", "--json", "b.json", "r.json", cwd=self.d)
         return code, {m["metric"]: m for m in json.loads(out)}
 
     def test_a_run_of_head_is_judged(self):
@@ -254,9 +257,9 @@ class Stale(unittest.TestCase):
         self.compare(commit=self.head, dirty=False)
         with tempfile.TemporaryDirectory() as elsewhere:
             for rev in (self.old[:10], "HEAD~1"):
-                code, out = run("price", "compare", "--json", rev, str(self.d / "r.json"), "--repo", self.tmp.name, cwd=elsewhere)
+                code, out = run("compare", "--json", rev, str(self.d / "r.json"), "--repo", self.tmp.name, cwd=elsewhere)
                 self.assertEqual((code, json.loads(out)[0]["verdict"]), (0, "same"), rev)
-            code, _ = run("price", "compare", "--json", "deadbeef", str(self.d / "r.json"), cwd=elsewhere)
+            code, _ = run("compare", "--json", "deadbeef", str(self.d / "r.json"), cwd=elsewhere)
             self.assertNotEqual(code, 0)
         self.assertTrue(list(Path(os.environ["FIUM_HOME"], "runs").glob(self.head + ".json")))
 

@@ -11,7 +11,7 @@ python3 -m unittest discover -s test
 ## Bench
 fium is priced like any other project (RULES.md K). Commit first, then:
 ```bash
-./fium price compare $(bench/run.py --paired) --since <baseline commit>
+./fium compare $(bench/run.py --paired) --since <baseline commit>
 ```
 Growth in read_bytes or loc needs a `Price:` trailer (K4).
 
