@@ -82,7 +82,7 @@ def check_readme(root):
                            f"'{name} does X.' in one sentence"))
     for sec in ("Install", "Use"):
         if not re.search(rf"^## {sec}\b", text, re.M):
-            out.append(finding("R3", "error", "README.md", f"no '## {sec}' section", f"add ## {sec}"))
+            out.append(finding("R3", "error" if sec == "Install" else "warn", "README.md", f"no '## {sec}' section", f"add ## {sec}"))
     if re.search(r"shields\.io|badge", text, re.I):
         out.append(finding("R4", "warn", "README.md", "badges", "remove badges"))
     out += readme_drift(root, name, text)

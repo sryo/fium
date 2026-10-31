@@ -185,10 +185,11 @@ class Check(unittest.TestCase):
         _, f = check(self.root)
         self.assertTrue(any(x["rule"] == "G2" and "goal 2" in x["msg"] for x in f))
 
-    def test_use_section_required(self):
+    def test_a_missing_use_section_warns(self):
         make(self.root, **{"README.md": README.split("## Use")[0]})
         _, f = check(self.root)
-        self.assertIn("R3", rules(f, "error"))
+        self.assertIn("R3", rules(f, "warn"))
+        self.assertNotIn("R3", rules(f, "error"))
 
     def test_a_logo_block_may_open_the_readme(self):
         logo = '<p align="center">\n  <picture>\n    <source srcset="d.svg">\n    <img src="l.svg" alt="demo">\n  </picture>\n</p>\n\n'
