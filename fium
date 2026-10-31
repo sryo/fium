@@ -204,7 +204,8 @@ def inert_globs(repo):
     # Agent-facing docs (SKILL.md, references/) change what a run measures, so they are never inert by default.
     p = Path(repo) / "bench" / "inert"
     lines = [l.strip() for l in p.read_text().splitlines() if l.strip() and not l.startswith("#")] if p.exists() else []
-    return [l for l in lines if l != "!defaults"] + ([] if "!defaults" in lines else INERT)
+    # bench/inert itself is always inert: editing the list can't change what a run measured.
+    return ["bench/inert"] + [l for l in lines if l != "!defaults"] + ([] if "!defaults" in lines else INERT)
 
 
 def stale_row(run_path, repo):
