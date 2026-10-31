@@ -1,7 +1,8 @@
-import json, subprocess, sys, tempfile, unittest
+import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 FIUM = Path(__file__).resolve().parent.parent / "fium"
+os.environ["FIUM_HOME"] = tempfile.mkdtemp()
 
 
 def run(*args, cwd=None):
@@ -247,6 +248,17 @@ class Stale(unittest.TestCase):
         self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "carried")
         (self.d / "bench" / "inert").write_text("!defaults\nnotes/*\n"); g("add", "bench"); g("commit", "-q", "-m", "s")
         self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "stale")
+
+    def test_a_judged_run_is_found_by_its_commit_from_any_cwd(self):
+        (self.d / "b.json").write_text(json.dumps({"commit": self.old, "dirty": False, "metrics": {"calls": metric([4], kind="count")}}))
+        self.compare(commit=self.head, dirty=False)
+        with tempfile.TemporaryDirectory() as elsewhere:
+            for rev in (self.old[:10], "HEAD~1"):
+                code, out = run("price", "compare", "--json", rev, str(self.d / "r.json"), "--repo", self.tmp.name, cwd=elsewhere)
+                self.assertEqual((code, json.loads(out)[0]["verdict"]), (0, "same"), rev)
+            code, _ = run("price", "compare", "--json", "deadbeef", str(self.d / "r.json"), cwd=elsewhere)
+            self.assertNotEqual(code, 0)
+        self.assertTrue(list(Path(os.environ["FIUM_HOME"], "runs").glob(self.head + ".json")))
 
     def test_an_unstamped_run_is_flagged_but_does_not_block(self):
         code, v = self.compare()

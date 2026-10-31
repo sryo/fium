@@ -28,7 +28,7 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 3. Leave renames that would break suites (tests/ → test/) for the user to decide.
 
 ## Judge a change
-1. Run the bench, then `fium price compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`.
+1. Run the bench, then `fium price compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`. The base can be a commit instead of a file: compare keeps every clean run it judges in `~/.fium/runs`.
 2. If the verdict is better or same, land it. If it's inconclusive (exit 3), rerun with more reps. If it's worse, try three cheaper ways. If one is still worse, propose a `Price:` trailer with the numbers and ask the user (K4). Never cross a limit.
 3. Before a live run, state its token cost and how many reps you'll buy (L1, L2), predict each verdict (L5), and run only the tasks `fium scope <base>..HEAD` names (L6).
 4. A stale verdict means the run measured another commit or a dirty tree. Commit, then rerun on HEAD (K1, K3).

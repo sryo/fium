@@ -255,17 +255,18 @@ def cap_for(name, kind, caps):
 
 
 def goals_text(path):
-    top = git(Path(path).resolve().parent, "rev-parse", "--show-toplevel").stdout.strip()
+    p = Path(path).resolve()
+    top = git(p if p.is_dir() else p.parent, "rev-parse", "--show-toplevel").stdout.strip()
     p = Path(top) / "GOALS.md" if top else None
     return p.read_text() if p and p.exists() else ""
 
 
-def price_compare(base_path, run_path, noise_path=None, priced=None):
+def price_compare(base_path, run_path, noise_path=None, priced=None, repo=None):
     base, run = json.load(open(base_path)), json.load(open(run_path))
     noise = json.load(open(noise_path)) if noise_path else {}
     rel, abs_ = noise.get("rel", {}), noise.get("abs", {})
     limits = {**base.get("limits", {}), **run.get("limits", {})}
-    caps = parse_caps(goals_text(base_path))
+    caps = parse_caps(goals_text(repo or base_path))
     return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), priced or {}, abs_.get(n, 0),
                   cap_for(n, m.get("kind", "time"), caps))
             for n, m in base["metrics"].items()]
@@ -309,6 +310,28 @@ def stale_row(run_path, repo):
     if files is not None and all(any(fnmatch(f, g) for g in globs) for f in files):
         return {**row, "verdict": "carried"}
     return {**row, "verdict": "stale"}
+
+
+# Every clean, stamped run a compare judges is kept by commit, so a later compare names its base by rev from any cwd.
+RUNS = Path(os.environ.get("FIUM_HOME") or "~/.fium").expanduser() / "runs"
+
+
+def keep_runs(*paths):
+    for p in paths:
+        run = json.load(open(p))
+        if len(run.get("commit", "")) == 40 and not run.get("dirty"):
+            RUNS.mkdir(parents=True, exist_ok=True)
+            (RUNS / f"{run['commit']}.json").write_text(json.dumps(run))
+
+
+def find_run(rev, repo):
+    if Path(rev).is_file():
+        return rev
+    sha = git(repo, "rev-parse", "--verify", "-q", f"{rev}^{{commit}}").stdout.strip() or rev
+    hits = sorted(RUNS.glob(f"{sha}*.json")) if re.fullmatch(r"[0-9a-f]{4,40}", sha) else []
+    if not hits:
+        sys.exit(f"fium: {rev} is neither a run file nor a commit with a run in {RUNS}; run the bench on it, or pass the file")
+    return str(hits[0])
 
 
 def price_ledger(repo, since=None):
@@ -433,7 +456,7 @@ def main():
     pr = sub.add_parser("price", help="judge what a change costs against a baseline").add_subparsers(dest="pcmd", required=True)
     pc = pr.add_parser("compare", help="judge a run against a baseline",
                      epilog="exit 0: lands; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
-    pc.add_argument("base"); pc.add_argument("run")
+    pc.add_argument("base", help="run file, or a commit whose run a past compare kept in ~/.fium/runs"); pc.add_argument("run")
     pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}}")
     pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
@@ -479,7 +502,9 @@ def price_main(a):
             priced[r["metric"]] = priced.get(r["metric"], 0) + abs(num(r["after"]) - num(r["before"]))
         except ValueError:
             priced[r["metric"]] = math.inf
-    rows = price_compare(a.base, a.run, a.noise, priced)
+    base = find_run(a.base, a.repo or ".")
+    rows = price_compare(base, a.run, a.noise, priced, (a.repo or ".") if base != a.base else None)
+    keep_runs(base, a.run)
     stale = stale_row(a.run, a.repo or ".")
     rows += [stale] if stale else []
     if a.json:
