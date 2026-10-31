@@ -34,6 +34,6 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 4. A stale verdict means the run measured another commit or a dirty tree. Commit, then rerun on HEAD (K1, K3).
 
 ## Learn from past sessions (S)
-After a working day or a live run, mine what agents actually did. figma-cdp's `tests/sleep/sleep.py mine`, then `digest`, works on any project's `~/.claude/projects/*<name>*` transcripts with `--source`. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).
+After a working day or a live run, mine what agents actually did. `fium sleep mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/sleep.json` adds sources, hint tables and gates (`fium sleep --help`). `learn` keeps each fix as a lesson that `replay` checks. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).
 
 To improve fium itself, propose rule or template changes from `fium survey` to the user.

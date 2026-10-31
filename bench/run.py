@@ -40,7 +40,7 @@ def exact(read):
         "untested_checks": m("count", untested_checks(rules, read("test/test_check.py"))),
         "unnamed_rules": m("count", unnamed_rules(rules)),
         "read_bytes": m("bytes", sum(len(read(p).encode()) for p in READ)),
-        "loc": m("loc", sum(1 for l in read("fium").splitlines() if l.strip())),
+        "loc": m("loc", sum(1 for p in ("fium", "sleep.py") for l in read(p).splitlines() if l.strip())),
     }
 
 

@@ -443,6 +443,8 @@ def scope_main(a):
 
 
 def main():
+    if sys.argv[1:2] == ["sleep"]:
+        os.execv(sys.executable, [sys.executable, str(HOME / "sleep.py"), *sys.argv[2:]])
     ap = argparse.ArgumentParser(prog="fium")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check", help="check a project against the ✓ rules in RULES.md; exit 1 on an error")
@@ -462,6 +464,7 @@ def main():
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
     pc.add_argument("--repo", help="repo whose Price: trailers --since reads (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
+    sub.add_parser("sleep", help="mine past sessions for failures and keep each fix as a lesson (fium sleep --help)")
     sub.add_parser("new", help="start a project from the templates").add_argument("name")
     sc = sub.add_parser("scope", help="which bench tasks a change can move")
     sc.add_argument("revs", help="base..HEAD")
