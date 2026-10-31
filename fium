@@ -72,12 +72,14 @@ def check_readme(root):
     lines = text.splitlines()
     # A logo (HTML or an image) may open the README; the title, if any, follows it.
     logo = next((i for i, l in enumerate(lines) if not re.match(r"\s*(<|!\[|$)", l)), len(lines))
+    # A logo whose alt text is the name already says it, so the opener after it need not.
+    named_logo = re.search(rf'alt="/?{re.escape(name)}"|!\[/?{re.escape(name)}\]', "\n".join(lines[:logo]), re.I)
     lines = lines[logo:]
     titled = bool(lines) and lines[0].strip() in (f"# {name}", f"# /{name}")
     if not titled and not logo:
         out.append(finding("R1", "error", "README.md", f"first line should be '# {name}'", f"set the title to '# {name}'"))
     opener = next((l for l in lines[titled:] if l.strip()), "")
-    if not re.match(rf"^/?{re.escape(name)}\b", opener, re.I):
+    if not (named_logo and not titled) and not re.match(rf"^/?{re.escape(name)}\b", opener, re.I):
         out.append(finding("R2", "warn", "README.md", "opener should start with the plain name and say what it does",
                            f"'{name} does X.' in one sentence"))
     for sec in ("Install", "Use"):

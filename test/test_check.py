@@ -199,6 +199,8 @@ class Check(unittest.TestCase):
             _, f = check(self.root)
             self.assertFalse({"R1", "R2"} & rules(f), readme)
         (self.root / "README.md").write_text(logo + "Some tagline.\n\n## Install\nx\n\n## Use\ny\n")
+        self.assertNotIn("R2", rules(check(self.root)[1]))
+        (self.root / "README.md").write_text(logo.replace('alt="demo"', 'alt="Logo"') + "Some tagline.\n\n## Install\nx\n\n## Use\ny\n")
         self.assertIn("R2", rules(check(self.root)[1]))
 
     def test_slash_title_allowed(self):
