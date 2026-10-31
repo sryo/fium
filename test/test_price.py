@@ -136,8 +136,8 @@ class Price(unittest.TestCase):
         self.assertEqual(self.compare(b, r)[1]["t"]["verdict"], "better")
 
     def test_a_gap_under_the_noise_files_abs_is_same(self):
-        b = self.write("b.json", {"t": metric([0.020, 0.021, 0.021, 0.020])})
-        r = self.write("r.json", {"t": metric([0.022, 0.023, 0.022, 0.023])})
+        b = self.write("b.json", {"t": metric([0.020, 0.021, 0.021, 0.020, 0.020, 0.021])})
+        r = self.write("r.json", {"t": metric([0.022, 0.023, 0.022, 0.023, 0.022, 0.023])})
         n = self.d / "noise.json"
         n.write_text(json.dumps({"rel": {"t": 0.1}, "abs": {"t": 0.05}}))
         self.assertNotEqual(self.compare(b, r)[1]["t"]["verdict"], "same")
