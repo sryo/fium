@@ -171,6 +171,42 @@ class Check(unittest.TestCase):
         _, f = check(self.root)
         self.assertNotIn("R1", rules(f))
 
+    def test_readme_names_no_env_var_outside_code(self):
+        make(self.root, **{"README.md": README.replace("Run it.", "Set `DEMO_PORT` to move it.\n```bash\nDEMO_TOKEN=x demo\n```")})
+        code, f = check(self.root)
+        self.assertEqual(code, 1)
+        hits = [x for x in f if x["rule"] == "R6"]
+        self.assertEqual([x["level"] for x in hits], ["error"])
+        self.assertIn("DEMO_PORT", hits[0]["msg"])
+
+    def test_readme_use_commands_exist_in_the_cli(self):
+        cli = 'import argparse\nap = argparse.ArgumentParser()\nsub = ap.add_subparsers()\nc = sub.add_parser("check")\nc.add_argument("--all")\n'
+        use = "## Use\n```bash\n./demo check --all ~/x\n~/bin/demo serve --port=8\ndemo <path>\nother check --nope\n```\n"
+        make(self.root, **{"README.md": README.split("## Use")[0] + use, "demo": cli})
+        _, f = check(self.root)
+        hits = sorted(x["msg"] for x in f if x["rule"] == "R6")
+        self.assertEqual(len(hits), 1, hits)
+        self.assertIn("serve", hits[0]); self.assertIn("--port", hits[0]); self.assertNotIn("--nope", hits[0])
+        (self.root / "bench").mkdir()
+        (self.root / "bench" / "readme-cli").write_text("serve\n--port\n")
+        self.assertNotIn("R6", rules(check(self.root)[1]))
+
+    def test_shell_case_verbs_count_as_commands(self):
+        cli = '#!/bin/sh\ncase "$1" in\n  up) start ;;\n  "down") stop ;;\nesac\n'
+        make(self.root, **{"README.md": README.split("## Use")[0] + "## Use\n```bash\ndemo up\ndemo down\n```\n", "demo": cli})
+        self.assertNotIn("R6", rules(check(self.root)[1]))
+
+    def test_readme_prose_timings_and_source_paths_warn(self):
+        make(self.root, **{"README.md": README.replace("Run it.", "It answers in 40 ms. See Sources/Demo/main.swift and run.py.\n```\nsleep 5s\n```")})
+        code, f = check(self.root)
+        self.assertEqual(code, 0)
+        hits = [x for x in f if x["rule"] == "R6"]
+        self.assertEqual({x["level"] for x in hits}, {"warn"})
+        msg = " ".join(x["msg"] for x in hits)
+        for want in ("40 ms", "Sources/", "main.swift", "run.py"):
+            self.assertIn(want, msg)
+        self.assertNotIn("5s", msg)
+
     def test_build_and_internals_sections_warn(self):
         make(self.root, **{"README.md": README + "\n## Development\nnpm run build\n\n## Architecture\nx\n"})
         code, f = check(self.root)

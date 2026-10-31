@@ -85,6 +85,7 @@ def check_readme(root):
             out.append(finding("R3", "error", "README.md", f"no '## {sec}' section", f"add ## {sec}"))
     if re.search(r"shields\.io|badge", text, re.I):
         out.append(finding("R4", "warn", "README.md", "badges", "remove badges"))
+    out += readme_drift(root, name, text)
     dev = re.findall(r"^## (Development|Contributing|Architecture|Building|Build|How it works|Internals)\b", text, re.M | re.I)
     if dev:
         out.append(finding("R5", "warn", "README.md", "sections for builders, not users: " + ", ".join(dev),
@@ -134,6 +135,57 @@ def own_checks(root):
         if r.returncode:
             tail = (r.stderr or r.stdout).strip().splitlines()[-1:] or [f"exit {r.returncode}"]
             out.append(finding("F8", "error", "bench/checks", f"{cmd}: {tail[0]}", f"run it in {root.name} and fix what it reports"))
+    return out
+
+
+FENCE = re.compile(r"^```.*?^```", re.M | re.S)
+CODE_EXT = {".py", ".js", ".mjs", ".cjs", ".ts", ".sh", ".swift", ".go", ".rs", ".lua", ""}
+SKIP_DIRS = {".git", "node_modules", "test", "tests", "docs", ".build", "dist", "build", "vendor"}
+
+
+def words_in(p):
+    # What a CLI can be called with: quoted literals (argparse names, case "verb") and shell `verb)` arms.
+    src = p.read_text(errors="replace")
+    return set(re.findall(r"[\"'`](-{0,2}\w[\w-]*)[\"'`=]", src)) | set(re.findall(r"^\s*\"?([\w-]+)\"?\)", src, re.M))
+
+
+def cli_words(root, name, shown):
+    extra = root / "bench" / "readme-cli"
+    words = set(extra.read_text().split()) if extra.is_file() else set()
+    for p in (root / name, root / "bin" / name):
+        words |= words_in(p) if p.is_file() else set()
+    if shown <= words:
+        return words
+    for d, dirs, files in os.walk(root):
+        dirs[:] = [x for x in dirs if x not in SKIP_DIRS and not x.startswith(".")]
+        words |= {w for f in files if Path(f).suffix in CODE_EXT and Path(d, f).stat().st_size < 1_000_000 for w in words_in(Path(d, f))}
+    return words
+
+
+def readme_drift(root, name, text):
+    # R6: the README says only what a user sees and types, and what it shows under Use still exists.
+    out, prose = [], FENCE.sub("", text)
+    env = sorted(set(re.findall(r"\$?\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b", prose)))
+    if env:
+        out.append(finding("R6", "error", "README.md", "names env vars: " + ", ".join(env),
+                           "say what the user does instead, or move the variable to AGENTS.md"))
+    use = re.search(r"^## Use\b(.*?)(?=^## |\Z)", text, re.M | re.S)
+    shown = set()
+    for block in re.findall(r"^```.*?\n(.*?)^```", use[1] if use else "", re.M | re.S):
+        for l in block.splitlines():
+            words = l.strip().removeprefix("$ ").split()
+            if words and re.fullmatch(rf"(\S*/)?{re.escape(name)}", words[0]):
+                args = [w.split("=")[0] for w in words[1:]]
+                shown |= {w for w in args if w.startswith("-")} | ({args[0]} if args and re.fullmatch(r"[a-z][\w-]*", args[0]) else set())
+    missing = sorted(shown - cli_words(root, name, shown)) if shown else []
+    if missing:
+        out.append(finding("R6", "error", "README.md", "Use shows what the CLI doesn't have: " + ", ".join(missing),
+                           "update the README, or list them in bench/readme-cli if the source names them another way"))
+    for what, rx in (("timings", r"\b\d+(?:\.\d+)? ?(?:ms|s|Hz|minutes?)\b"), ("source paths", r"\bSources/|\b[\w/.-]+\.(?:swift|py)\b")):
+        hits = sorted(set(re.findall(rx, prose)))
+        if hits:
+            out.append(finding("R6", "warn", "README.md", f"{what} in prose: " + ", ".join(hits),
+                               "describe what the user sees; numbers and internals go stale in AGENTS.md or the code"))
     return out
 
 

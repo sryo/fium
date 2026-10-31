@@ -33,6 +33,7 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **R3 ✓** Then `## Install`, the shortest way to get it, and `## Use`, the few things a person actually types. Add `## Works with` and `## Known gaps` only when they have something to say.
 - **R4 ✓** No badges.
 - **R5 ✓** No build steps, dev setup or internals. Those belong in AGENTS.md.
+- **R6 ✓** The README doesn't drift from the code: prose names no env var, and each command and flag under `## Use` is in the CLI's source or `bench/readme-cli`. Prose timings and source paths warn.
 
 ## Live runs (L)
 - **L1** Before a live run, state what it will cost in tokens, turns and wall time. Prices are never in dollars.
