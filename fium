@@ -213,6 +213,7 @@ def main():
     pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}}")
     pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
+    pc.add_argument("--repo", help="repo whose Price: trailers --since reads (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
     a = ap.parse_args()
     if a.cmd == "price":
@@ -237,7 +238,7 @@ def main():
 def price_main(a):
     num = lambda x: float(x.replace(",", ""))
     priced = {m: math.inf for m in a.price}
-    for r in price_ledger(Path(a.run).resolve().parent, a.since) if a.since else []:
+    for r in price_ledger(a.repo or ".", a.since) if a.since else []:
         try:
             priced[r["metric"]] = priced.get(r["metric"], 0) + abs(num(r["after"]) - num(r["before"]))
         except ValueError:

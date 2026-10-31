@@ -161,7 +161,7 @@ class Ledger(unittest.TestCase):
             m = lambda v, k: {"dir": "lower", "kind": k, "samples": [v]}
             (d / "b.json").write_text(json.dumps({"metrics": {"calls": m(4, "count"), "bytes": m(10, "bytes"), "q": m(1, "count")}}))
             (d / "r.json").write_text(json.dumps({"metrics": {"calls": m(5, "count"), "bytes": m(12, "bytes"), "q": m(2, "count")}}))
-            code, out = run("price", "compare", "--json", "--since", "base", str(d / "b.json"), str(d / "r.json"))
+            code, out = run("price", "compare", "--json", "--since", "base", "--repo", t, str(d / "b.json"), str(d / "r.json"))
             v = {r["metric"]: r["verdict"] for r in json.loads(out)}
             self.assertEqual(v, {"calls": "priced", "bytes": "priced", "q": "worse"})
             self.assertEqual(code, 1)
