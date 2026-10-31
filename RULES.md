@@ -33,6 +33,7 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **L2** Run only the tasks a change touches, at 2 reps. Add a third only when the two disagree. Refreshing a baseline takes 3.
 - **L3** Spend live runs sparingly. Read the transcripts you already have first, batch fixes into one run, and give routing-only changes a single smoke rep.
 - **L4** After 5 runs in a row with no keep, stop or change approach.
+- **L5** Before a run, predict each metric's verdict and name the reading that would prove the change wrong. When a verdict surprises you, check the bench before the code: its noise, its baseline, its commit.
 
 ## Prices (K)
 A change lands only if it costs no more than before, unless the user accepts the price. A limit blocks it even then. `fium price compare bench/baseline.json <run>` makes the call.
@@ -42,7 +43,8 @@ A change lands only if it costs no more than before, unless the user accepts the
   - Noisy metrics are judged on the bootstrap range of the median ratio against 1 ± noise. Paired reps are judged on their rep-by-rep ratios. Noise comes from `bench/noise.json` (`{"rel": {metric: fraction}, "abs": {metric: amount}}`), written by an A/A run, and defaults to 10%; a move no bigger than `abs` is same.
   - A `limit` kind is judged only against its limit.
   - A price covers an exact metric's growth up to what its trailers add up to.
-- **K3** A worse, missing or limit verdict blocks the change. Inconclusive also blocks: its median is outside the noise band, but the range is too wide to call. Rerun it with more reps. With fewer than 5 reps on a side, a noisy metric is judged on its median against the band. The verdict is marked low-confidence (`low_n`, printed with a `?`), and a worse median still blocks.
+  - A run carries the `"commit"` it measured (`git rev-parse HEAD`) and `"dirty"`: whether `git status --porcelain` printed anything.
+- **K3** A worse, missing, limit or stale verdict blocks the change. A run is stale when its commit isn't HEAD or its tree was dirty. An unstamped run is flagged, not blocked. Inconclusive also blocks: its median is outside the noise band, but the range is too wide to call. Rerun it with more reps. With fewer than 5 reps on a side, a noisy metric is judged on its median against the band. The verdict is marked low-confidence (`low_n`, printed with a `?`), and a worse median still blocks.
 - **K4** Only the user sets a price. The agent tries three cheaper ways first, then proposes one trailer per number: `Price: <metric>; <before> -> <after>; buys: <what>; tried: <what>; owner: "<the user's words>", <date>`. The agent never writes the owner's words itself.
 - **K5** When the score is equal, less code wins (`git diff --shortstat`). Refresh the baseline only in its own commit.
 

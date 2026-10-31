@@ -163,12 +163,51 @@ class Ledger(unittest.TestCase):
             (d / "r.json").write_text(json.dumps({"metrics": {"calls": m(5, "count"), "bytes": m(12, "bytes"), "q": m(2, "count")}}))
             code, out = run("price", "compare", "--json", "--since", "base", "--repo", t, str(d / "b.json"), str(d / "r.json"))
             v = {r["metric"]: r["verdict"] for r in json.loads(out)}
-            self.assertEqual(v, {"calls": "priced", "bytes": "priced", "q": "worse"})
+            self.assertEqual(v, {"calls": "priced", "bytes": "priced", "q": "worse", "(commit)": "unstamped"})
             self.assertEqual(code, 1)
             # Growth past what the prices add up to is not covered by them.
             (d / "r2.json").write_text(json.dumps({"metrics": {"calls": m(6, "count"), "bytes": m(12, "bytes"), "q": m(1, "count")}}))
             code, out = run("price", "compare", "--json", "--since", "base", str(d / "b.json"), str(d / "r2.json"))
             self.assertEqual({r["metric"]: r["verdict"] for r in json.loads(out)}["calls"], "worse")
+
+
+class Stale(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.d = Path(self.tmp.name)
+        g = lambda *a: subprocess.run(["git", "-C", self.tmp.name, *a], capture_output=True, text=True, check=True).stdout.strip()
+        g("init", "-q"); g("config", "user.email", "a@b"); g("config", "user.name", "a")
+        g("commit", "-q", "--allow-empty", "-m", "old"); self.old = g("rev-parse", "HEAD")
+        g("commit", "-q", "--allow-empty", "-m", "new"); self.head = g("rev-parse", "HEAD")
+        (self.d / "b.json").write_text(json.dumps({"metrics": {"calls": metric([4], kind="count")}}))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def compare(self, **stamp):
+        (self.d / "r.json").write_text(json.dumps({"metrics": {"calls": metric([4], kind="count")}, **stamp}))
+        code, out = run("price", "compare", "--json", "b.json", "r.json", cwd=self.d)
+        return code, {m["metric"]: m for m in json.loads(out)}
+
+    def test_a_run_of_head_is_judged(self):
+        code, v = self.compare(commit=self.head[:12], dirty=False)
+        self.assertNotIn("(commit)", v)
+        self.assertEqual(code, 0)
+
+    def test_a_run_of_an_older_commit_is_stale_and_blocks(self):
+        code, v = self.compare(commit=self.old)
+        self.assertEqual(v["(commit)"]["verdict"], "stale")
+        self.assertEqual(code, 1)
+
+    def test_a_run_of_a_dirty_tree_is_stale(self):
+        code, v = self.compare(commit=self.head, dirty=True)
+        self.assertEqual(v["(commit)"]["verdict"], "stale")
+        self.assertEqual(code, 1)
+
+    def test_an_unstamped_run_is_flagged_but_does_not_block(self):
+        code, v = self.compare()
+        self.assertEqual(v["(commit)"]["verdict"], "unstamped")
+        self.assertEqual(code, 0)
 
 
 

@@ -30,7 +30,8 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 ## Judge a change
 1. Run the bench, then `fium price compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`.
 2. If the verdict is better or same, land it. If it's inconclusive, rerun with more reps. If it's worse, try three cheaper ways. If one is still worse, propose a `Price:` trailer with the numbers and ask the user (K4). Never cross a limit.
-3. Before a live run, state its token cost and how many reps you'll buy (L1, L2).
+3. Before a live run, state its token cost and how many reps you'll buy (L1, L2), and predict each verdict (L5).
+4. A stale verdict means the run measured another commit or a dirty tree. Commit, then rerun on HEAD (K1, K3).
 
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. figma-cdp's `tests/sleep/sleep.py mine`, then `digest`, works on any project's `~/.claude/projects/*<name>*` transcripts with `--source`. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).

@@ -185,6 +185,18 @@ def price_compare(base_path, run_path, noise_path=None, priced=None):
             for n, m in base["metrics"].items()]
 
 
+def stale_row(run_path, repo):
+    # A run says which commit it measured, so an old or dirty run can't pass for this change (K1, K2).
+    run = json.load(open(run_path))
+    sha = run.get("commit")
+    if not sha:
+        return {"metric": "(commit)", "verdict": "unstamped"}
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    if len(sha) < 7 or not head.startswith(sha) or run.get("dirty"):
+        return {"metric": "(commit)", "base": head[:12] or None, "run": sha[:12] + ("+dirty" if run.get("dirty") else ""), "verdict": "stale"}
+    return None
+
+
 def price_ledger(repo, since=None):
     rng = f"{since}..HEAD" if since else "HEAD"
     log = subprocess.run(["git", "-C", str(repo), "log", "--format=%h%x00%B%x01", rng], capture_output=True, text=True).stdout
@@ -244,13 +256,19 @@ def price_main(a):
         except ValueError:
             priced[r["metric"]] = math.inf
     rows = price_compare(a.base, a.run, a.noise, priced)
+    stale = stale_row(a.run, a.repo or ".")
+    rows += [stale] if stale else []
     if a.json:
         print(json.dumps(rows))
     else:
         for r in rows:
             print(f"{r['verdict'] + ('?' if r.get('low_n') else ''):>12}  {r['metric']}: {r.get('base')} -> {r.get('run')}" + (f"  range {r['range']}" if "range" in r else ""))
     vs = {r["verdict"] for r in rows}
-    sys.exit(1 if vs & {"worse", "limit", "missing"} else 3 if "inconclusive" in vs else 0)
+    if stale and not a.json:
+        fix = ("stamp the run with \"commit\": git rev-parse HEAD and \"dirty\": whether git status --porcelain is non-empty"
+               if stale["verdict"] == "unstamped" else "commit, then rerun the bench on HEAD")
+        print(f"  {stale['verdict']}: {fix}", file=sys.stderr)
+    sys.exit(1 if vs & {"worse", "limit", "missing", "stale"} else 3 if "inconclusive" in vs else 0)
 
 
 if __name__ == "__main__":
