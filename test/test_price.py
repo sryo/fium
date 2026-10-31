@@ -224,12 +224,16 @@ class Stale(unittest.TestCase):
         (self.d / "SKILL.md").write_text("x"); g("add", "SKILL.md"); g("commit", "-q", "-m", "skill")
         self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "stale")
 
-    def test_a_bench_inert_file_replaces_the_defaults(self):
+    def test_a_bench_inert_file_extends_the_defaults(self):
         g = lambda *a: subprocess.run(["git", "-C", self.tmp.name, *a], capture_output=True, check=True)
         (self.d / "bench").mkdir(); (self.d / "bench" / "inert").write_text("# docs\nnotes/*\nbench/inert\n")
         (self.d / "notes").mkdir(); (self.d / "notes" / "n.md").write_text("x")
         g("add", "bench", "notes"); g("commit", "-q", "-m", "n")
         self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "carried")
+        (self.d / "README.md").write_text("x"); g("add", "README.md"); g("commit", "-q", "-m", "r")
+        self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "carried")
+        (self.d / "bench" / "inert").write_text("!defaults\nnotes/*\nbench/inert\n"); g("add", "bench"); g("commit", "-q", "-m", "s")
+        self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "stale")
 
     def test_an_unstamped_run_is_flagged_but_does_not_block(self):
         code, v = self.compare()
