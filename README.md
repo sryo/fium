@@ -13,6 +13,7 @@ mkdir -p ~/.claude/skills && ln -sfn ~/Documents/fium/skills/fium ~/.claude/skil
 ~/Documents/fium/fium new ~/Documents/<name>
 ~/Documents/fium/fium check ~/Documents/perch
 ~/Documents/fium/fium check --all ~/Documents
+~/Documents/fium/fium status
 ```
 
-`new` starts a project from the templates. Each finding names a rule in RULES.md and the fix. `--all` checks every repo in the folder and also runs each one's own checks.
+`new` starts a project from the templates. Each finding names a rule in RULES.md and the fix. `--all` checks every repo in the folder and also runs each one's own checks. `status` shows each repo's branches and worktrees.

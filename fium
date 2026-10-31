@@ -498,6 +498,99 @@ def scope_main(a):
         print("all tasks" if res["tasks"] == "*" else " ".join(res["tasks"]) or "no tasks: nothing a bench measures changed")
 
 
+# ---- status and grep: the repos under a folder, read at each one's base. Neither writes. ----
+def repos_under(base):
+    return sorted({d.resolve() for d in Path(base).expanduser().iterdir() if (d / ".git").exists()})
+
+
+def worktrees(repo):
+    # [(path, branch)] from git worktree list; the first is the main checkout, whose branch is the base.
+    out, path = [], None
+    for l in git(repo, "worktree", "list", "--porcelain").stdout.splitlines():
+        if l.startswith("worktree "):
+            path = str(Path(l[9:]).resolve())
+        elif l.startswith("branch "):
+            out.append((path, l[18:]))
+        elif l == "detached":
+            out.append((path, None))
+    return out
+
+
+def test_at(path):
+    # The first code block under AGENTS.md's ## Test (F7), run where the branch is checked out.
+    m = re.search(r"^## Test\n.*?```\w*\n(.*?)```", (Path(path) / "AGENTS.md").read_text(), re.M | re.S) \
+        if (Path(path) / "AGENTS.md").exists() else None
+    if not m:
+        return {"skipped": "no ## Test command in AGENTS.md"}
+    cmds = [l for l in m.group(1).splitlines() if l.strip() and not l.startswith("#")]
+    code = 0
+    for c in cmds:
+        code = subprocess.run(c, shell=True, cwd=path, capture_output=True, timeout=900).returncode
+        if code:
+            break
+    return {"exit": code, "commit": git(path, "rev-parse", "HEAD").stdout.strip(), "ran": cmds}
+
+
+def status(base, campaign=None):
+    res = {}
+    for repo in repos_under(base):
+        wts = worktrees(repo)
+        head = wts[0][1] if wts else None
+        mine = (campaign or {}).get(repo.name, [])
+        wt_of = {b: p for p, b in wts[1:] if b}
+        branches = {}
+        for b in git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/").stdout.split():
+            if b == head:
+                continue
+            ahead = int(git(repo, "rev-list", "--count", f"{head}..{b}").stdout or 0) if head else 0
+            info = {"merged": True} if head and not ahead else {"merged": False, "ahead": ahead}
+            if b in wt_of:
+                info["worktree"] = wt_of[b]
+            if b in mine and not info["merged"]:
+                info["test"] = test_at(wt_of[b]) if b in wt_of else {"skipped": "no worktree; check the branch out to test it"}
+            branches[b] = info
+        cleanup = [c for b in mine if branches.get(b, {}).get("merged") for c in
+                   ([f"git -C {repo} worktree remove {branches[b]['worktree']}"] if "worktree" in branches[b] else [])
+                   + [f"git -C {repo} branch -d {b}"]]
+        dirty = len(git(repo, "status", "--porcelain").stdout.splitlines())
+        res[repo.name] = {"base": head, "dirty": dirty, "branches": branches, "cleanup": cleanup}
+    return res
+
+
+def status_main(a):
+    camp = None
+    if a.campaign:
+        p = RUNS.parent / "campaigns" / f"{a.campaign}.json"
+        if not p.exists():
+            sys.exit(f"fium status: no campaign at {p}; write {{\"repos\": {{repo: [branch, ...]}}}} there")
+        camp = json.load(open(p))["repos"]
+    res = status(a.path, camp)
+    if a.json:
+        return print(json.dumps(res))
+    for name, r in res.items():
+        print(f"{name} ({r['base'] or 'detached'})" + (f": {r['dirty']} dirty" if r["dirty"] else ""))
+        for b, i in r["branches"].items():
+            t = i.get("test", {})
+            test = (f"  test {'ok' if t['exit'] == 0 else 'exit ' + str(t['exit'])} at {t['commit'][:7]}" if "exit" in t
+                    else f"  test skipped: {t['skipped']}" if t else "")
+            print(f"  {b}: {'merged' if i['merged'] else '+' + str(i['ahead'])}" + (f"  {i['worktree']}" if "worktree" in i else "") + test)
+    cleanup = [c for r in res.values() for c in r["cleanup"]]
+    if cleanup:
+        print("clean up the campaign's merged branches:\n" + "\n".join(f"  {c}" for c in cleanup))
+
+
+def grep_main(a):
+    hit = False
+    for repo in repos_under(a.path):
+        wts = worktrees(repo)
+        head = wts[0][1] if wts else "HEAD"
+        r = git(repo, "grep", "-n", "-E", a.pattern, head)
+        for l in r.stdout.splitlines():
+            hit = True
+            print(f"{repo.name} {l}")
+    sys.exit(0 if hit else 1)
+
+
 def main():
     if sys.argv[1:2] == ["sleep"]:
         os.execv(sys.executable, [sys.executable, str(HOME / "sleep.py"), *sys.argv[2:]])
@@ -526,7 +619,17 @@ def main():
     sc.add_argument("--repo", default=".")
     sc.add_argument("--affects", help="rules file (default: <repo>/bench/affects.json)")
     sc.add_argument("--json", action="store_true")
+    st = sub.add_parser("status", help="each repo's base branch, dirty files, other branches and worktrees; never writes")
+    st.add_argument("path", nargs="?", default="~/Documents")
+    st.add_argument("--campaign", help="~/.fium/campaigns/<name>.json: rerun its branches' ## Test commands and print cleanup for its merged ones")
+    st.add_argument("--json", action="store_true")
+    gp = sub.add_parser("grep", help="search every repo under a folder at its base branch, not at a worktree's")
+    gp.add_argument("pattern"); gp.add_argument("path", nargs="?", default="~/Documents")
     a = ap.parse_args()
+    if a.cmd == "status":
+        return status_main(a)
+    if a.cmd == "grep":
+        return grep_main(a)
     if a.cmd == "new":
         return new(a.name)
     if a.cmd == "scope":

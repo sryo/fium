@@ -1,6 +1,6 @@
 ---
 name: fium
-description: How the user wants every project built, measured and improved. Use when they want to start a new project ("I want to make something that does X"), bring an existing project in line, add benchmarks or cost pricing to one, write or fix a README/GOALS.md/AGENTS.md, or judge whether a change made anything cost more (tokens, calls, time, bytes, LOC).
+description: How the user wants every project built, measured and improved. Use when they want to start a new project ("I want to make something that does X"), bring an existing project in line, add benchmarks or cost pricing to one, write or fix a README/GOALS.md/AGENTS.md, judge whether a change made anything cost more (tokens, calls, time, bytes, LOC), or run one goal across several repos (/fium across).
 ---
 
 The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids (P1, R2, K4…). The aim (P) is simple, natural ways of doing things that are cheap on resources and reasonably fast, and that never intrude on the user.
@@ -35,5 +35,8 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. `fium sleep mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/sleep.json` adds sources, hint tables and gates (`fium sleep --help`). `learn` keeps each fix as a lesson that `replay` checks. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).
+
+## Across repos
+For one goal across several repos (`/fium across <goal>`), read `across.md` beside this file and follow it.
 
 To improve fium itself, propose rule or template changes from `fium survey` to the user.
