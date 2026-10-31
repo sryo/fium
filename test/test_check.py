@@ -132,6 +132,18 @@ class Check(unittest.TestCase):
         out = json.loads(r.stdout)
         self.assertEqual(list(out), ["demo"])
 
+    def test_all_runs_each_projects_own_checks(self):
+        make(self.root, **{"bench/checks": "# doc budgets\ntrue\nsh -c 'echo over budget >&2; exit 1'\n"})
+        subprocess.run(["git", "init", "-q", str(self.root)])
+        r = subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1)
+        hits = [x for x in json.loads(r.stdout)["demo"] if x["rule"] == "F8"]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("over budget", hits[0]["msg"])
+        (self.root / "bench" / "checks").write_text("true\n")
+        r = subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout)
+
     def test_every_goal_needs_a_row(self):
         make(self.root, **{"GOALS.md": GOALS.replace("1. **Fast.**", "1. **Fast.**\n2. **Small.**")})
         _, f = check(self.root)

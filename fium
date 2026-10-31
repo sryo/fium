@@ -121,6 +121,18 @@ def check_memory(root):
     return out
 
 
+def own_checks(root):
+    # A project's checks fium can't know about, one shell command per line, run from its root (F8).
+    p = root / "bench" / "checks"
+    out = []
+    for cmd in [l.strip() for l in p.read_text().splitlines() if l.strip() and not l.startswith("#")] if p.is_file() else []:
+        r = subprocess.run(cmd, shell=True, cwd=root, capture_output=True, text=True)
+        if r.returncode:
+            tail = (r.stderr or r.stdout).strip().splitlines()[-1:] or [f"exit {r.returncode}"]
+            out.append(finding("F8", "error", "bench/checks", f"{cmd}: {tail[0]}", f"run it in {root.name} and fix what it reports"))
+    return out
+
+
 def check(root):
     root = Path(root).resolve()
     return check_files(root) + check_goals(root) + check_readme(root) + check_agent_docs(root) + check_memory(root)
@@ -444,7 +456,7 @@ def main():
         return survey_main(a)
     base = Path(a.path).expanduser()
     if a.all:
-        res = {d.name: check(d) for d in sorted(base.iterdir()) if (d / ".git").exists()}
+        res = {d.name: check(d) + own_checks(d.resolve()) for d in sorted(base.iterdir()) if (d / ".git").exists()}
     else:
         res = check(base)
     if a.json:
