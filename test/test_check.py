@@ -41,6 +41,40 @@ Run it.
 
 AGENTS = "# demo\n\n## Test\n```bash\nmake test\n```\n"
 
+DESIGN = """---
+version: alpha
+name: demo
+colors:
+  primary: "#1A1C1E"  # ink
+typography:
+  body:
+    fontFamily: Public Sans
+    fontSize: 1rem
+rounded:
+  md: 8px
+components:
+  button:
+    backgroundColor: "{colors.primary}"
+    typography: "{typography.body}"
+---
+
+## Overview
+Calm.
+
+## Colors
+Ink.
+
+```md
+## Overview
+```
+
+## Fonts
+Unknown sections are kept wherever they sit.
+
+## Shapes
+Soft.
+"""
+
 
 def make(root, **over):
     files = {"AGENTS.md": AGENTS, "README.md": README, "GOALS.md": GOALS, "LICENSE": "x\n"}
@@ -227,6 +261,28 @@ class Check(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("F7", rules(f, "error"))
 
+    def test_no_design_md_no_finding(self):
+        make(self.root)
+        self.assertNotIn("D1", rules(check(self.root)[1]))
+
+    def test_design_md_clean_passes(self):
+        make(self.root, **{"DESIGN.md": DESIGN})
+        self.assertNotIn("D1", rules(check(self.root)[1]))
+
+    def test_design_md_broken_ref(self):
+        make(self.root, **{"DESIGN.md": DESIGN.replace("{colors.primary}", "{colors.brand}")})
+        code, f = check(self.root)
+        self.assertEqual(code, 1)
+        self.assertEqual([x["msg"] for x in f if x["rule"] == "D1"], ["refs that don't resolve: {colors.brand}"])
+
+    def test_design_md_sections_in_spec_order(self):
+        make(self.root, **{"DESIGN.md": DESIGN.replace("## Colors", "## Tmp").replace("## Shapes", "## Colors").replace("## Tmp", "## Shapes")})
+        self.assertIn("D1", rules(check(self.root)[1], "error"))
+
+    def test_design_md_front_matter_must_parse(self):
+        make(self.root, **{"DESIGN.md": DESIGN.replace("  primary:", "  primary")})
+        self.assertIn("D1", rules(check(self.root)[1], "error"))
+
     def test_memory_files_carry_name_and_description(self):
         make(self.root)
         conf = Path(self.tmp.name) / "claude"
@@ -248,6 +304,7 @@ class Check(unittest.TestCase):
         self.assertEqual(os.readlink(root / "CLAUDE.md"), "AGENTS.md")
         self.assertTrue((root / "bench" / "baseline.json").exists())
         self.assertNotIn("NAME", (root / "README.md").read_text())
+        self.assertFalse((root / "DESIGN.md").exists())
         code, f = check(root)
         self.assertEqual(rules(f, "error"), set())
         self.assertEqual(code, 0)

@@ -35,6 +35,9 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **R5 ✓** No build steps, dev setup or internals. Those belong in AGENTS.md.
 - **R6 ✓** The README doesn't drift from the code: prose names no env var, and each command and flag under `## Use` is in the CLI's source or `bench/readme-cli`. Prose timings and source paths warn.
 
+## Design (D)
+- **D1 ✓** A repo with a UI may keep `DESIGN.md` in Google's format (templates/DESIGN.md). When it does, the front matter parses, every `{ref}` resolves and the `##` sections keep the spec's order, so agents and figma-cdp read one source that holds together.
+
 ## Live runs (L)
 - **L1** Before a live run, state what it will cost in tokens, turns and wall time. Prices are never in dollars.
 - **L2** Run only the tasks a change touches, at 2 reps. Add a third only when the two disagree. Refreshing a baseline takes 3.

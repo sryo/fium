@@ -189,9 +189,51 @@ def readme_drift(root, name, text):
     return out
 
 
+DESIGN_SECTIONS = [("overview", "brand & style"), ("colors",), ("typography",), ("layout", "layout & spacing"),
+                   ("elevation & depth", "elevation"), ("shapes",), ("components",), ("do's and don'ts",)]
+YAML_LINE = re.compile(r"( *)([\w.-]+|\"[^\"]*\"|'[^']*'):(?:\s+(.*))?")
+
+
+def check_design(root):
+    # D1: Google's DESIGN.md (spec 0.4.0) in the YAML subset it uses: nested keys, scalar values, {path} refs.
+    p = root / "DESIGN.md"
+    if not p.is_file():
+        return []
+    text = p.read_text()
+    m = re.match(r"---\n(.*?)\n---\n", text, re.S)
+    if not m:
+        return [finding("D1", "error", "DESIGN.md", "no YAML front matter", "open with ---, the tokens, --- (templates/DESIGN.md)")]
+    paths, stack, bad, refs = set(), [], [], []
+    for n, l in enumerate(m[1].splitlines(), 2):
+        if not l.strip() or l.lstrip().startswith("#"):
+            continue
+        y = YAML_LINE.fullmatch(l.rstrip())
+        if not y:
+            bad.append(str(n))
+            continue
+        stack = [s for s in stack if s[0] < len(y[1])] + [(len(y[1]), y[2].strip("\"'"))]
+        paths.add(".".join(k for _, k in stack))
+        refs += re.findall(r"\{([\w.-]+)\}", y[3] or "")
+    out = []
+    if bad:
+        out.append(finding("D1", "error", "DESIGN.md", "front matter lines that don't parse: " + ", ".join(bad),
+                           "each line is 'key: value' or 'key:' with deeper keys under it"))
+    broken = sorted({r for r in refs if r not in paths})
+    if broken:
+        out.append(finding("D1", "error", "DESIGN.md", "refs that don't resolve: " + ", ".join(f"{{{r}}}" for r in broken),
+                           "define the token or fix the ref"))
+    order = [i for h in re.findall(r"^## (.+?)\s*$", FENCE.sub("", text[m.end():]), re.M)
+             for i, names in enumerate(DESIGN_SECTIONS) if h.lower() in names]
+    if order != sorted(set(order)):
+        out.append(finding("D1", "error", "DESIGN.md", "sections out of the spec's order or repeated",
+                           "Overview, Colors, Typography, Layout, Elevation & Depth, Shapes, Components, Do's and Don'ts"))
+    return out
+
+
 def check(root):
     root = Path(root).resolve()
-    return check_files(root) + check_goals(root) + check_readme(root) + check_agent_docs(root) + check_memory(root)
+    return (check_files(root) + check_goals(root) + check_readme(root) + check_agent_docs(root) + check_memory(root)
+            + check_design(root))
 
 
 # ---- price: judge a change's cost against a baseline ----
@@ -455,12 +497,12 @@ def survey_main(a):
 
 
 def new(name):
-    # The templates with NAME filled in, a git repo, and CLAUDE.md -> AGENTS.md (F1-F5).
+    # The templates with NAME filled in, a git repo, and CLAUDE.md -> AGENTS.md (F1-F5). DESIGN.md is only for a UI (D1).
     root = Path(name).resolve()
     if root.exists():
         sys.exit(f"fium new: {root} exists; pick another name or bring it in with fium check")
     for src in (HOME / "templates").rglob("*"):
-        if src.is_file():
+        if src.is_file() and src.name != "DESIGN.md":
             dst = root / src.relative_to(HOME / "templates")
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(src.read_text().replace("NAME", root.name))
