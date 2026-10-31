@@ -11,13 +11,16 @@ One way of doing things across every sryo project, all serving the same aim (RUL
 1. **Every rule is citable.** Each has an id and one line saying why.
 2. **Checkable rules are checked.** If a script can verify it, `fium check` does.
 3. **Few rules.** A rule earns its place by preventing a real, repeated mess.
+4. **Cheap to read and run.** Agents read the rules every session, and the checker runs on every repo.
 
 ## How we know
 | Goal | Metric | Where |
 |---|---|---|
-| 1 | every rule has an id | `RULES.md` |
-| 2 | ✓ rules each have a test | `test/test_check.py` |
-| 3 | rule count; repos passing | `./fium check --all ~/Documents` |
+| 1 | rules without an id (limit 0) | `bench/run.py` unnamed_rules |
+| 2 | ✓ rules without a test (limit 0) | `bench/run.py` untested_checks |
+| 3 | rule count | `bench/run.py` rules |
+| 3 | repos passing | `./fium check --all ~/Documents` |
+| 4 | bytes an agent reads; checker LOC; check and compare time | `bench/run.py` read_bytes, loc, check_ms, compare_ms |
 
 ## Non-goals
 - Enforcing style inside code. Linters do that per language.
