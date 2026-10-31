@@ -108,13 +108,18 @@ class Price(unittest.TestCase):
         self.assertEqual(v["calls"]["verdict"], "priced")
         self.assertEqual(code, 0)
 
-    def test_slack_lets_a_metric_grow_as_far_as_the_user_allows(self):
-        b = self.write("b.json", {"dash": metric([1000], kind="bytes"), "t": metric([500], kind="bytes")})
-        (self.d / "caps.json").write_text(json.dumps({"slack": {"dash": 0.1}}))
-        code, v = self.compare(b, self.write("r.json", {"dash": metric([1080], kind="bytes"), "t": metric([500], kind="bytes")}))
-        self.assertEqual((v["dash"]["verdict"], code), ("grew", 0))
-        code, v = self.compare(b, self.write("r2.json", {"dash": metric([1200], kind="bytes"), "t": metric([501], kind="bytes")}))
-        self.assertEqual((v["dash"]["verdict"], v["t"]["verdict"], code), ("worse", "worse", 1))
+    def test_goals_caps_set_how_firm_each_metric_is(self):
+        subprocess.run(["git", "init", "-q", str(self.d)], check=True)
+        (self.d / "GOALS.md").write_text("## How we know\nCaps: `q3 b1 t0 t.js*=2 big=3`\n")
+        m = lambda v, k="bytes": metric([v], kind=k)
+        b = self.write("b.json", {"dash": m(1000), "t.js": m(500), "big": m(10), "q": m(1, "quality"), "ms": m(5, "time")})
+        r = self.write("r.json", {"dash": m(1080), "t.js": m(501), "big": m(11), "q": m(1, "quality"), "ms": m(9, "time")})
+        code, v = self.compare(b, r, "--price", "t.js", "--price", "big")
+        got = {k: v[k]["verdict"] for k in ["dash", "t.js", "big", "ms"]}
+        self.assertEqual(got, {"dash": "grew", "t.js": "priced", "big": "worse", "ms": "grew"})
+        self.assertEqual(code, 1)
+        _, v = self.compare(b, self.write("r2.json", {"dash": m(1200), "t.js": m(500), "big": m(10), "q": m(1, "quality"), "ms": m(5, "time")}))
+        self.assertEqual(v["dash"]["verdict"], "worse")
 
     def test_missing_metric_fails(self):
         b = self.write("b.json", {"a": metric([1], kind="count"), "b": metric([1], kind="count")})

@@ -16,5 +16,7 @@ When two goals conflict, the higher one wins.
 |---|---|---|
 | 1 | what is measured | `command or file` |
 
+Caps: `q3 k2 n2 b2 t1` (the owner's: how firm each kind of number is, fium RULES.md K6)
+
 ## Non-goals
 - What this deliberately won't do, and why.

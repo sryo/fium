@@ -133,7 +133,7 @@ def ratio_range(base, run, n=2000):
     return out[int(0.025 * n)], out[int(0.975 * n) - 1]
 
 
-def judge(name, base, run, rel, limit, priced, abs_=0, slack=0):
+def judge(name, base, run, rel, limit, priced, abs_=0, cap=(2, 0)):
     if run is None:
         return {"metric": name, "verdict": "missing"}
     lower = base.get("dir", "lower") == "lower"
@@ -171,13 +171,48 @@ def judge(name, base, run, rel, limit, priced, abs_=0, slack=0):
         worse = mr > mb if lower else mr < mb
         better = mr < mb if lower else mr > mb
         v = "worse" if worse else "better" if better else "same"
-    # Slack is the user's own allowance for a metric they don't mind growing a little (caps.json).
-    if v == "worse" and slack and mb and abs(mr - mb) / abs(mb) <= slack:
+    # The owner's cap (GOALS.md Caps:): 0 only reported, 1 may grow by its slack, 2 needs a price, 3 never grows.
+    level, slack = cap
+    row["cap"] = level
+    if v == "worse" and (level == 0 or (level == 1 and mb and abs(mr - mb) / abs(mb) <= slack)):
         v = "grew"
     # An exact metric's prices cover only the growth they add up to; a noisy one's cover it while it lasts.
-    if v == "worse" and name in priced and (noisy or abs(mr - mb) <= priced[name]):
+    if v == "worse" and level < 3 and name in priced and (noisy or abs(mr - mb) <= priced[name]):
         v = "priced"
     return {**row, "verdict": v}
+
+
+KIND_LETTER = {"quality": "q", "tokens": "k", "count": "n", "loc": "n", "bytes": "b", "time": "t"}
+CAP_LINE = re.compile(r"^\s*(?:Caps|Topes):\s*`?([^`\n]+)`?", re.M | re.I)
+
+
+def parse_caps(text):
+    # "q3 k2 n2 b1 t1 t.js*=2 mount*=1:25": a level per kind letter, then overrides by metric glob.
+    kinds, globs = {}, []
+    m = CAP_LINE.search(text or "")
+    for tok in (m.group(1).split() if m else []):
+        key, _, val = tok.rpartition("=") if "=" in tok else (tok[0], "", tok[1:])
+        lvl, _, pct = val.partition(":")
+        cap = (int(lvl), float(pct) / 100 if pct else 0.10)
+        if "=" in tok:
+            globs.append((key, cap))
+        else:
+            kinds[key] = cap
+    return kinds, globs
+
+
+def cap_for(name, kind, caps):
+    kinds, globs = caps
+    for g, cap in reversed(globs):
+        if fnmatch(name, g):
+            return cap
+    return kinds.get(KIND_LETTER.get(kind, ""), (2, 0))
+
+
+def goals_text(path):
+    top = git(Path(path).resolve().parent, "rev-parse", "--show-toplevel").stdout.strip()
+    p = Path(top) / "GOALS.md" if top else None
+    return p.read_text() if p and p.exists() else ""
 
 
 def price_compare(base_path, run_path, noise_path=None, priced=None):
@@ -185,9 +220,9 @@ def price_compare(base_path, run_path, noise_path=None, priced=None):
     noise = json.load(open(noise_path)) if noise_path else {}
     rel, abs_ = noise.get("rel", {}), noise.get("abs", {})
     limits = {**base.get("limits", {}), **run.get("limits", {})}
-    caps = Path(base_path).parent / "caps.json"
-    slack = json.load(open(caps)).get("slack", {}) if caps.exists() else {}
-    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), priced or {}, abs_.get(n, 0), slack.get(n, 0))
+    caps = parse_caps(goals_text(base_path))
+    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), priced or {}, abs_.get(n, 0),
+                  cap_for(n, m.get("kind", "time"), caps))
             for n, m in base["metrics"].items()]
 
 
