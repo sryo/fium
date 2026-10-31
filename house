@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""house: check a project against RULES.md. Each finding cites a rule id."""
+import argparse, json, re, sys
+from pathlib import Path
+
+
+def finding(rule, level, file, msg, fix):
+    return {"rule": rule, "level": level, "file": file, "msg": msg, "fix": fix}
+
+
+def check_files(root):
+    out = []
+    if not (root / "AGENTS.md").exists():
+        fix = "git mv AGENT.md AGENTS.md" if (root / "AGENT.md").exists() else "write AGENTS.md (templates/AGENTS.md)"
+        out.append(finding("F1", "error", "AGENTS.md", "missing", fix))
+    claude = root / "CLAUDE.md"
+    if not (claude.is_symlink() and claude.readlink().name == "AGENTS.md"):
+        out.append(finding("F2", "error", "CLAUDE.md", "not a symlink to AGENTS.md",
+                           "move anything unique into AGENTS.md, then: ln -sf AGENTS.md CLAUDE.md"))
+    for rule, name in (("F3", "README.md"), ("F4", "GOALS.md"), ("F5", "LICENSE")):
+        if not (root / name).exists():
+            out.append(finding(rule, "error", name, "missing", f"copy templates/{name}"))
+    if (root / "tests").is_dir() and not (root / "test").is_dir():
+        out.append(finding("F6", "warn", "tests/", "test folder is named tests/", "git mv tests test (when the suites still pass)"))
+    return out
+
+
+GOAL_SECTIONS = [
+    ("purpose", r"^## What .+ is for"),
+    ("never traded", r"^## .*never trad"),
+    ("goals", r"^## Goals"),
+    ("how we know", r"^## How we know"),
+    ("non-goals", r"^## Non-goals"),
+]
+
+
+def check_goals(root):
+    p = root / "GOALS.md"
+    if not p.exists():
+        return []
+    text = p.read_text()
+    out = []
+    missing = [n for n, rx in GOAL_SECTIONS if not re.search(rx, text, re.M | re.I)]
+    if missing:
+        out.append(finding("G1", "error", "GOALS.md", "missing sections: " + ", ".join(missing), "follow templates/GOALS.md"))
+    m = re.search(r"^## How we know\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    if m:
+        rows = [r for r in m.group(1).splitlines() if r.startswith("|")][2:]
+        for r in rows:
+            cells = [c.strip() for c in r.strip("|").split("|")]
+            if len(cells) < 3 or not cells[1] or not cells[-1]:
+                out.append(finding("G2", "error", "GOALS.md", f"metric row without a metric or a where: {r.strip()}",
+                                   "name the command or file that measures it"))
+    return out
+
+
+def check_readme(root):
+    p = root / "README.md"
+    if not p.exists():
+        return []
+    text = p.read_text()
+    name = root.name.lower()
+    out = []
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != f"# {name}":
+        out.append(finding("R1", "error", "README.md", f"first line should be '# {name}'", f"set the title to '# {name}'"))
+    opener = next((l for l in lines[1:] if l.strip()), "")
+    if not re.match(rf"^{re.escape(name)}\b", opener, re.I) or opener.startswith("`"):
+        out.append(finding("R2", "warn", "README.md", "opener should start with the plain name and say what it does",
+                           f"'{name} does X.' in one sentence"))
+    if not re.search(r"^## Install", text, re.M):
+        out.append(finding("R3", "error", "README.md", "no '## Install' section", "add one command block under ## Install"))
+    if re.search(r"shields\.io|badge", text, re.I):
+        out.append(finding("R4", "warn", "README.md", "badges", "remove badges"))
+    return out
+
+
+def check(root):
+    root = Path(root).resolve()
+    return check_files(root) + check_goals(root) + check_readme(root)
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="house")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("check")
+    c.add_argument("path", nargs="?", default=".")
+    c.add_argument("--all", action="store_true", help="check every git repo directly under path")
+    c.add_argument("--json", action="store_true")
+    a = ap.parse_args()
+    base = Path(a.path).expanduser()
+    if a.all:
+        res = {d.name: check(d) for d in sorted(base.iterdir()) if (d / ".git").exists()}
+    else:
+        res = check(base)
+    if a.json:
+        print(json.dumps(res))
+    else:
+        for repo, fs in (res.items() if a.all else [(base.resolve().name, res)]):
+            errs = sum(f["level"] == "error" for f in fs)
+            print(f"{repo}: {errs} errors, {len(fs) - errs} warnings")
+            for f in fs:
+                print(f"  {f['level']} {f['rule']} {f['file']}: {f['msg']} -> {f['fix']}")
+    flat = [f for fs in res.values() for f in fs] if a.all else res
+    sys.exit(1 if any(f["level"] == "error" for f in flat) else 0)
+
+
+if __name__ == "__main__":
+    main()
