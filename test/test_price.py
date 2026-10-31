@@ -263,6 +263,12 @@ class Stale(unittest.TestCase):
             self.assertNotEqual(code, 0)
         self.assertTrue(list(Path(os.environ["FIUM_HOME"], "runs").glob(self.head + ".json")))
 
+    def test_a_run_with_a_null_or_missing_commit_is_judged_and_not_kept(self):
+        for stamp in ({"commit": None}, {}):
+            code, v = self.compare(**stamp)
+            self.assertEqual((code, v["(commit)"]["verdict"]), (0, "unstamped"), stamp)
+        self.assertEqual(list(Path(os.environ["FIUM_HOME"]).glob("runs/None*")), [])
+
     def test_an_unstamped_run_is_flagged_but_does_not_block(self):
         code, v = self.compare()
         self.assertEqual(v["(commit)"]["verdict"], "unstamped")

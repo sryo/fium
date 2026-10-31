@@ -2,6 +2,8 @@ import os, re, subprocess, sys, tempfile, unittest, json
 from pathlib import Path
 
 FIUM = Path(__file__).resolve().parent.parent / "fium"
+# fium compare keeps runs under FIUM_HOME; the suite never writes to the real ~/.fium.
+os.environ["FIUM_HOME"] = tempfile.mkdtemp()
 
 GOALS = """# demo: goals
 

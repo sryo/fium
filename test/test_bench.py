@@ -1,8 +1,10 @@
-import json, subprocess, sys, tempfile, unittest
+import json, os, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH = ROOT / "bench" / "run.py"
+# fium compare keeps runs under FIUM_HOME; the suite never writes to the real ~/.fium.
+os.environ["FIUM_HOME"] = tempfile.mkdtemp()
 
 
 class Bench(unittest.TestCase):

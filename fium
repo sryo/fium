@@ -323,7 +323,7 @@ RUNS = Path(os.environ.get("FIUM_HOME") or "~/.fium").expanduser() / "runs"
 def keep_runs(*paths):
     for p in paths:
         run = json.load(open(p))
-        if len(run.get("commit", "")) == 40 and not run.get("dirty"):
+        if len(run.get("commit") or "") == 40 and not run.get("dirty"):
             RUNS.mkdir(parents=True, exist_ok=True)
             (RUNS / f"{run['commit']}.json").write_text(json.dumps(run))
 
