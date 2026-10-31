@@ -17,7 +17,7 @@ class Survey(unittest.TestCase):
             root = self.docs / name
             root.mkdir()
             readme = README.replace("demo", name) + "\n## Troubleshooting\nRestart it.\n"
-            agents = f"# {name}\n" + ("\n## Bench\nrun it\n" if i < 2 else "")
+            agents = f"# {name}\n\n## Test\nmake test\n" + ("\n## Bench\nrun it\n" if i < 2 else "")
             make(root, **{"README.md": readme, "AGENTS.md": agents, "LICENSE": None if i == 2 else "x\n"})
             git(root, "init", "-q"); git(root, "config", "user.email", "a@b"); git(root, "config", "user.name", "a")
             git(root, "add", "-A")

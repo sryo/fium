@@ -37,8 +37,11 @@ Run it.
 """
 
 
+AGENTS = "# demo\n\n## Test\n```bash\nmake test\n```\n"
+
+
 def make(root, **over):
-    files = {"AGENTS.md": "# demo\n", "README.md": README, "GOALS.md": GOALS, "LICENSE": "x\n"}
+    files = {"AGENTS.md": AGENTS, "README.md": README, "GOALS.md": GOALS, "LICENSE": "x\n"}
     files.update(over)
     for name, body in files.items():
         if body is None:
@@ -51,8 +54,9 @@ def make(root, **over):
     (root / "test").mkdir(exist_ok=True)
 
 
-def check(root):
-    r = subprocess.run([sys.executable, str(FIUM), "check", "--json", str(root)], capture_output=True, text=True)
+def check(root, env=None):
+    r = subprocess.run([sys.executable, str(FIUM), "check", "--json", str(root)], capture_output=True, text=True,
+                       env={**os.environ, **(env or {})})
     return r.returncode, json.loads(r.stdout)
 
 
@@ -148,6 +152,33 @@ class Check(unittest.TestCase):
         code, f = check(self.root)
         self.assertEqual(code, 0)
         self.assertIn("R5", rules(f, "warn"))
+
+    def test_agent_docs_have_no_imports(self):
+        make(self.root, **{"AGENTS.md": AGENTS + "@docs/style.md\n", "skills/demo/SKILL.md": "# x\n  @~/notes.md\n```\n@decorator\n```\n"})
+        code, f = check(self.root)
+        self.assertEqual(code, 1)
+        hits = sorted(x["file"] for x in f if x["rule"] == "F6")
+        self.assertEqual(hits, ["AGENTS.md", "skills/demo/SKILL.md"])
+        self.assertIn("inline", [x for x in f if x["rule"] == "F6"][0]["fix"])
+
+    def test_agents_md_has_a_test_section(self):
+        make(self.root, **{"AGENTS.md": "# demo\n\n## Build\nmake\n"})
+        code, f = check(self.root)
+        self.assertEqual(code, 1)
+        self.assertIn("F7", rules(f, "error"))
+
+    def test_memory_files_carry_name_and_description(self):
+        make(self.root)
+        conf = Path(self.tmp.name) / "claude"
+        mem = conf / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(self.root.resolve())) / "memory"
+        mem.mkdir(parents=True)
+        (mem / "MEMORY.md").write_text("- [a](a.md) — index\n")
+        (mem / "good.md").write_text("---\nname: good\ndescription: fine\nmetadata:\n  type: user\n---\nbody\n")
+        (mem / "bad.md").write_text("# Decisions\nname: not frontmatter\n")
+        code, f = check(self.root, {"CLAUDE_CONFIG_DIR": str(conf)})
+        self.assertEqual(code, 1)
+        hits = [x for x in f if x["rule"] == "M1"]
+        self.assertEqual([Path(x["file"]).name for x in hits], ["bad.md"])
 
     def test_new_project_passes_check(self):
         r = subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)

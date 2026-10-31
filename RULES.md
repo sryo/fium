@@ -10,6 +10,11 @@ How every project here is laid out, measured and improved. Each rule has an id f
 - **F3 ✓** `README.md`, following R.
 - **F4 ✓** `GOALS.md`, following G.
 - **F5 ✓** `LICENSE`. The default is the sryo license (templates/LICENSE).
+- **F6 ✓** Agent docs (AGENTS.md, SKILL.md) have no `@` imports. When an import stops resolving, its text drops silently.
+- **F7 ✓** AGENTS.md has a `## Test` section with the command that runs the tests.
+
+## Memory (M)
+- **M1 ✓** Each memory file (`~/.claude/projects/<project>/memory/`) opens with `name` and `description` frontmatter, so an agent loads those lines and reads a body only when it needs it.
 
 ## Goals (G)
 - **G1 ✓** GOALS.md has these sections:
