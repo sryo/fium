@@ -38,11 +38,11 @@ A README is for someone deciding whether they want this, and then using it. It s
 A change lands only if it costs no more than before, unless the user accepts the price. A limit blocks it even then. `house price compare bench/baseline.json <run>` makes the call.
 - **K1** Commit before you measure, so every experiment can be reverted.
 - **K2** A bench writes `{"metrics": {name: {"dir": "lower"|"higher", "kind", "samples": [...]}}, "limits": {name: line}}`.
-  - Exact kinds (count, bytes, quality, loc) are judged on any move.
-  - Noisy kinds (time, tokens) are judged on the bootstrap range of the median ratio against 1 ± noise. Paired reps are judged on their rep-by-rep ratios. Noise comes from `bench/noise.json` (`{"rel": {metric: fraction}, "abs": {metric: amount}}`), written by an A/A run, and defaults to 10%; a move no bigger than `abs` is same.
+  - Exact metrics are judged on any move. Time and tokens are noisy by default. Set `"noisy": true` on anything else that varies between identical runs, such as an agent's turns or a scorer's output.
+  - Noisy metrics are judged on the bootstrap range of the median ratio against 1 ± noise. Paired reps are judged on their rep-by-rep ratios. Noise comes from `bench/noise.json` (`{"rel": {metric: fraction}, "abs": {metric: amount}}`), written by an A/A run, and defaults to 10%; a move no bigger than `abs` is same.
   - A `limit` kind is judged only against its limit.
   - A price covers an exact metric's growth up to what its trailers add up to.
-- **K3** A worse, missing or limit verdict blocks the change. So does inconclusive: rerun with more reps.
+- **K3** A worse, missing or limit verdict blocks the change. Inconclusive also blocks: its median is outside the noise band, but the range is too wide to call. Rerun it with more reps. For agent evals at 2 reps, add a third rep once. If it's still inconclusive, show the user the numbers rather than buying more reps (L2).
 - **K4** Only the user sets a price. The agent tries three cheaper ways first, then proposes one trailer per number: `Price: <metric>; <before> -> <after>; buys: <what>; tried: <what>; owner: "<the user's words>", <date>`. The agent never writes the owner's words itself.
 - **K5** When the score is equal, less code wins (`git diff --shortstat`). Refresh the baseline only in its own commit.
 

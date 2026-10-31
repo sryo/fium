@@ -140,11 +140,12 @@ def judge(name, base, run, rel, limit, priced, abs_=0):
     row = {"metric": name, "base": mb, "run": mr}
     if limit is not None and ((mr > limit) if lower else (mr < limit)):
         return {**row, "verdict": "limit", "limit": limit}
+    noisy = base.get("noisy", base.get("kind", "time") in NOISY)
     if base.get("kind") == "limit":
         v = "same"
     elif abs(mr - mb) <= abs_:
         v = "same"
-    elif base.get("kind", "time") in NOISY and len(b) > 1 and len(r) > 1:
+    elif noisy and len(b) > 1 and len(r) > 1:
         lo, hi = ratio_range(b, r)
         row["range"] = [round(lo, 4), round(hi, 4)]
         if not lower:
@@ -162,7 +163,7 @@ def judge(name, base, run, rel, limit, priced, abs_=0):
         better = mr < mb if lower else mr > mb
         v = "worse" if worse else "better" if better else "same"
     # An exact metric's prices cover only the growth they add up to; a noisy one's cover it while it lasts.
-    if v == "worse" and name in priced and (base.get("kind", "time") in NOISY or abs(mr - mb) <= priced[name]):
+    if v == "worse" and name in priced and (noisy or abs(mr - mb) <= priced[name]):
         v = "priced"
     return {**row, "verdict": v}
 

@@ -57,6 +57,13 @@ class Price(unittest.TestCase):
         self.assertEqual(v["t"]["verdict"], "inconclusive")
         self.assertEqual(code, 3)
 
+    def test_noisy_flag_makes_a_count_statistical(self):
+        m = lambda xs: {"dir": "lower", "kind": "count", "noisy": True, "samples": xs}
+        b = self.write("b.json", {"turns": m([58, 60, 55])})
+        r = self.write("r.json", {"turns": m([59, 57, 61])})
+        _, v = self.compare(b, r)
+        self.assertNotEqual(v["turns"]["verdict"], "worse")
+
     def test_counts_any_increase_is_worse(self):
         b = self.write("b.json", {"calls": metric([4], kind="count")})
         r = self.write("r.json", {"calls": metric([5], kind="count")})
