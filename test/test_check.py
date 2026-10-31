@@ -1,7 +1,7 @@
 import os, subprocess, sys, tempfile, unittest, json
 from pathlib import Path
 
-HOUSE = Path(__file__).resolve().parent.parent / "house"
+FIUM = Path(__file__).resolve().parent.parent / "fium"
 
 GOALS = """# demo: goals
 
@@ -52,7 +52,7 @@ def make(root, **over):
 
 
 def check(root):
-    r = subprocess.run([sys.executable, str(HOUSE), "check", "--json", str(root)], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, str(FIUM), "check", "--json", str(root)], capture_output=True, text=True)
     return r.returncode, json.loads(r.stdout)
 
 
@@ -124,7 +124,7 @@ class Check(unittest.TestCase):
         make(self.root)
         subprocess.run(["git", "init", "-q", str(self.root)])
         (Path(self.tmp.name) / "notarepo").mkdir()
-        r = subprocess.run([sys.executable, str(HOUSE), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
+        r = subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
         out = json.loads(r.stdout)
         self.assertEqual(list(out), ["demo"])
 

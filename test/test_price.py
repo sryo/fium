@@ -1,11 +1,11 @@
 import json, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
-HOUSE = Path(__file__).resolve().parent.parent / "house"
+FIUM = Path(__file__).resolve().parent.parent / "fium"
 
 
 def run(*args, cwd=None):
-    r = subprocess.run([sys.executable, str(HOUSE), *args], capture_output=True, text=True, cwd=cwd)
+    r = subprocess.run([sys.executable, str(FIUM), *args], capture_output=True, text=True, cwd=cwd)
     return r.returncode, r.stdout
 
 

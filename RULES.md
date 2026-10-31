@@ -1,6 +1,6 @@
-# house rules
+# fium rules
 
-How every project here is laid out, measured and improved. Each rule has an id for reviews and commits to cite. `house check` checks the rules marked ✓.
+How every project here is laid out, measured and improved. Each rule has an id for reviews and commits to cite. `fium check` checks the rules marked ✓.
 
 **P1 The aim.** Natural, simple ways of doing things that are cheap on resources, reasonably fast, and never get in the user's way. When two rules conflict, the reading that serves this aim wins.
 
@@ -35,7 +35,7 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **L4** After 5 runs in a row with no keep, stop or change approach.
 
 ## Prices (K)
-A change lands only if it costs no more than before, unless the user accepts the price. A limit blocks it even then. `house price compare bench/baseline.json <run>` makes the call.
+A change lands only if it costs no more than before, unless the user accepts the price. A limit blocks it even then. `fium price compare bench/baseline.json <run>` makes the call.
 - **K1** Commit before you measure, so every experiment can be reverted.
 - **K2** A bench writes `{"metrics": {name: {"dir": "lower"|"higher", "kind", "samples": [...]}}, "limits": {name: line}}`.
   - Exact metrics are judged on any move. Time and tokens are noisy by default. Set `"noisy": true` on anything else that varies between identical runs, such as an agent's turns or a scorer's output.

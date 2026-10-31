@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""house: check a project against RULES.md. Each finding cites a rule id."""
+"""fium: check a project against RULES.md. Each finding cites a rule id."""
 import argparse, json, re, sys
 from pathlib import Path
 
@@ -193,7 +193,7 @@ def price_ledger(repo, since=None):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="house")
+    ap = argparse.ArgumentParser(prog="fium")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check")
     c.add_argument("path", nargs="?", default=".")
