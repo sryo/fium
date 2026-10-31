@@ -1,0 +1,71 @@
+{
+ "commit": "88ee46b8f4678fb4c7705e94abeeb0d4facd1a58",
+ "dirty": false,
+ "metrics": {
+  "rules": {
+   "dir": "lower",
+   "kind": "count",
+   "samples": [
+    28
+   ]
+  },
+  "untested_checks": {
+   "dir": "lower",
+   "kind": "count",
+   "samples": [
+    0
+   ]
+  },
+  "unnamed_rules": {
+   "dir": "lower",
+   "kind": "count",
+   "samples": [
+    0
+   ]
+  },
+  "read_bytes": {
+   "dir": "lower",
+   "kind": "bytes",
+   "samples": [
+    9196
+   ]
+  },
+  "loc": {
+   "dir": "lower",
+   "kind": "loc",
+   "samples": [
+    239
+   ]
+  },
+  "check_ms": {
+   "dir": "lower",
+   "kind": "time",
+   "samples": [
+    46.31,
+    43.2,
+    44.54,
+    47.3,
+    46.34,
+    42.81,
+    41.63
+   ]
+  },
+  "compare_ms": {
+   "dir": "lower",
+   "kind": "time",
+   "samples": [
+    41.98,
+    36.89,
+    35.65,
+    35.82,
+    37.32,
+    39.16,
+    38.44
+   ]
+  }
+ },
+ "limits": {
+  "untested_checks": 0,
+  "unnamed_rules": 0
+ }
+}
