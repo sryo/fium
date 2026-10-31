@@ -30,4 +30,4 @@ The rules are in `~/Documents/house/RULES.md`. Read them first and cite rule ids
 ## Judge a change
 1. Run the bench, then `house price compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`.
 2. If the verdict is better or same, land it. If it's inconclusive, rerun with more reps. If it's worse, try three cheaper ways. If one is still worse, propose a `Price:` trailer with the numbers and ask the user (K4). Never cross a limit.
-3. Before a live run, state its token cost and how many reps you'll buy (L2, L3).
+3. Before a live run, state its token cost and how many reps you'll buy (L1, L2).

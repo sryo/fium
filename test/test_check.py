@@ -31,6 +31,9 @@ demo does one thing well.
 ```bash
 make install
 ```
+
+## Use
+Run it.
 """
 
 
@@ -91,14 +94,6 @@ class Check(unittest.TestCase):
         hit = [x for x in f if x["rule"] == "F1"][0]
         self.assertIn("git mv AGENT.md AGENTS.md", hit["fix"])
 
-    def test_tests_dir_warns(self):
-        make(self.root)
-        (self.root / "test").rmdir()
-        (self.root / "tests").mkdir()
-        code, f = check(self.root)
-        self.assertEqual(code, 0)
-        self.assertIn("F6", rules(f, "warn"))
-
     def test_goals_sections(self):
         make(self.root, **{"GOALS.md": "# demo: goals\n\n## Goals\n1. x\n"})
         code, f = check(self.root)
@@ -133,6 +128,16 @@ class Check(unittest.TestCase):
         out = json.loads(r.stdout)
         self.assertEqual(list(out), ["demo"])
 
+    def test_every_goal_needs_a_row(self):
+        make(self.root, **{"GOALS.md": GOALS.replace("1. **Fast.**", "1. **Fast.**\n2. **Small.**")})
+        _, f = check(self.root)
+        self.assertTrue(any(x["rule"] == "G2" and "goal 2" in x["msg"] for x in f))
+
+    def test_use_section_required(self):
+        make(self.root, **{"README.md": README.split("## Use")[0]})
+        _, f = check(self.root)
+        self.assertIn("R3", rules(f, "error"))
+
     def test_slash_title_allowed(self):
         make(self.root, **{"README.md": README.replace("# demo", "# /demo")})
         _, f = check(self.root)
@@ -142,7 +147,7 @@ class Check(unittest.TestCase):
         make(self.root, **{"README.md": README + "\n## Development\nnpm run build\n\n## Architecture\nx\n"})
         code, f = check(self.root)
         self.assertEqual(code, 0)
-        self.assertIn("R6", rules(f, "warn"))
+        self.assertIn("R5", rules(f, "warn"))
 
 
 if __name__ == "__main__":

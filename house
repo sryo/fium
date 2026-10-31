@@ -20,8 +20,6 @@ def check_files(root):
     for rule, name in (("F3", "README.md"), ("F4", "GOALS.md"), ("F5", "LICENSE")):
         if not (root / name).exists():
             out.append(finding(rule, "error", name, "missing", f"copy templates/{name}"))
-    if (root / "tests").is_dir() and not (root / "test").is_dir():
-        out.append(finding("F6", "warn", "tests/", "test folder is named tests/", "git mv tests test (when the suites still pass)"))
     return out
 
 
@@ -44,7 +42,11 @@ def check_goals(root):
     if missing:
         out.append(finding("G1", "error", "GOALS.md", "missing sections: " + ", ".join(missing), "follow templates/GOALS.md"))
     m = re.search(r"^## How we know\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    goals = set(re.findall(r"^(\d+)\. ", text.split("## How we know")[0], re.M))
     if m:
+        covered = {c.split("|")[1].strip() for c in m.group(1).splitlines() if c.startswith("|")}
+        for g in sorted(goals - covered):
+            out.append(finding("G2", "error", "GOALS.md", f"goal {g} has no row in How we know", "add: | {g} | metric | command or file |".replace("{g}", g)))
         rows = [r for r in m.group(1).splitlines() if r.startswith("|")][2:]
         for r in rows:
             cells = [c.strip() for c in r.strip("|").split("|")]
@@ -54,27 +56,34 @@ def check_goals(root):
     return out
 
 
+def repo_name(root):
+    import subprocess
+    url = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
+    return (url.rstrip("/").split("/")[-1].removesuffix(".git") if url else root.name).lower()
+
+
 def check_readme(root):
     p = root / "README.md"
     if not p.exists():
         return []
     text = p.read_text()
-    name = root.name.lower()
+    name = repo_name(root)
     out = []
     lines = text.splitlines()
     if not lines or lines[0].strip() not in (f"# {name}", f"# /{name}"):
         out.append(finding("R1", "error", "README.md", f"first line should be '# {name}'", f"set the title to '# {name}'"))
     opener = next((l for l in lines[1:] if l.strip()), "")
-    if not re.match(rf"^{re.escape(name)}\b", opener, re.I) or opener.startswith("`"):
+    if not re.match(rf"^/?{re.escape(name)}\b", opener, re.I):
         out.append(finding("R2", "warn", "README.md", "opener should start with the plain name and say what it does",
                            f"'{name} does X.' in one sentence"))
-    if not re.search(r"^## Install", text, re.M):
-        out.append(finding("R3", "error", "README.md", "no '## Install' section", "add one command block under ## Install"))
+    for sec in ("Install", "Use"):
+        if not re.search(rf"^## {sec}\b", text, re.M):
+            out.append(finding("R3", "error", "README.md", f"no '## {sec}' section", f"add ## {sec}"))
     if re.search(r"shields\.io|badge", text, re.I):
         out.append(finding("R4", "warn", "README.md", "badges", "remove badges"))
     dev = re.findall(r"^## (Development|Contributing|Architecture|Building|Build|How it works|Internals)\b", text, re.M | re.I)
     if dev:
-        out.append(finding("R6", "warn", "README.md", "sections for builders, not users: " + ", ".join(dev),
+        out.append(finding("R5", "warn", "README.md", "sections for builders, not users: " + ", ".join(dev),
                            "move build, dev and internals to AGENTS.md; the README says why it's useful and how to use it"))
     return out
 
@@ -164,12 +173,6 @@ def price_ledger(repo, since=None):
     return rows
 
 
-def price_loc(repo, base="main"):
-    out = subprocess.run(["git", "-C", str(repo), "diff", "--numstat", base], capture_output=True, text=True).stdout
-    add = sum(int(a) for a, *_ in (l.split("\t") for l in out.splitlines()) if a.isdigit())
-    rem = sum(int(d) for _, d, *_ in (l.split("\t") for l in out.splitlines()) if d.isdigit())
-    return {"added": add, "removed": rem, "net": add - rem}
-
 
 def main():
     ap = argparse.ArgumentParser(prog="house")
@@ -185,10 +188,6 @@ def main():
     pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
     pc.add_argument("--json", action="store_true")
-    pl = pr.add_parser("ledger", help="list accepted prices from commit trailers")
-    pl.add_argument("repo", nargs="?", default="."); pl.add_argument("--since"); pl.add_argument("--json", action="store_true")
-    po = pr.add_parser("loc", help="lines added and removed against a base")
-    po.add_argument("repo", nargs="?", default="."); po.add_argument("--base", default="main")
     a = ap.parse_args()
     if a.cmd == "price":
         return price_main(a)
@@ -210,14 +209,7 @@ def main():
 
 
 def price_main(a):
-    if a.pcmd == "ledger":
-        rows = price_ledger(a.repo, a.since)
-        print(json.dumps(rows) if a.json else "\n".join(f"{r['commit']} {r['metric']}: {r['before']} -> {r['after']} buys {r['buys']} ({r['owner']})" for r in rows))
-        return
-    if a.pcmd == "loc":
-        print(json.dumps(price_loc(a.repo, a.base)))
-        return
-    priced = list(a.price) + ([r["metric"] for r in price_ledger(".", a.since)] if a.since else [])
+    priced = list(a.price) + ([r["metric"] for r in price_ledger(Path(a.run).resolve().parent, a.since)] if a.since else [])
     rows = price_compare(a.base, a.run, a.noise, priced)
     if a.json:
         print(json.dumps(rows))

@@ -99,22 +99,21 @@ class Price(unittest.TestCase):
 
 
 class Ledger(unittest.TestCase):
-    def test_reads_price_and_legacy_trailers(self):
+    def test_trailers_excuse_their_metric_since(self):
         with tempfile.TemporaryDirectory() as t:
             g = lambda *a: subprocess.run(["git", "-C", t, *a], capture_output=True, check=True)
             g("init", "-q"); g("config", "user.email", "a@b"); g("config", "user.name", "a")
-            g("commit", "-q", "--allow-empty", "-m", "base")
-            g("commit", "-q", "--allow-empty", "-m", "x\n\nPrice: calls; 4 -> 5; buys: retries; owner: \"ok\", 2026-10-31")
+            g("commit", "-q", "--allow-empty", "-m", "base"); g("tag", "base")
+            g("commit", "-q", "--allow-empty", "-m", "x\n\nPrice: calls; 4 -> 5; buys: a; with semicolons; tried: b; owner: \"ok\", 2026-10-31")
             g("commit", "-q", "--allow-empty", "-m", "y\n\nBench-Accepted: bytes; 10 -> 12; buys: icons; owner: \"fine\", 2026-10-30")
-            g("commit", "-q", "--allow-empty", "-m", "z\n\nPrice: gzip; 1 -> 2; buys: a; with semicolons; tried: b; c; owner: \"yes\", 2026-10-31")
-            code, out = run("price", "ledger", "--json", t)
-            rows = json.loads(out)
-            self.assertEqual(code, 0)
-            self.assertEqual(sorted(r["metric"] for r in rows), ["bytes", "calls", "gzip"])
-            gz = [r for r in rows if r["metric"] == "gzip"][0]
-            self.assertEqual(gz["buys"], "a; with semicolons")
-            self.assertEqual(gz["tried"], "b; c")
-            self.assertTrue(all(r["owner"] for r in rows))
+            d = Path(t)
+            m = lambda v, k: {"dir": "lower", "kind": k, "samples": [v]}
+            (d / "b.json").write_text(json.dumps({"metrics": {"calls": m(4, "count"), "bytes": m(10, "bytes"), "q": m(1, "count")}}))
+            (d / "r.json").write_text(json.dumps({"metrics": {"calls": m(5, "count"), "bytes": m(12, "bytes"), "q": m(2, "count")}}))
+            code, out = run("price", "compare", "--json", "--since", "base", str(d / "b.json"), str(d / "r.json"))
+            v = {r["metric"]: r["verdict"] for r in json.loads(out)}
+            self.assertEqual(v, {"calls": "priced", "bytes": "priced", "q": "worse"})
+            self.assertEqual(code, 1)
 
 
 if __name__ == "__main__":
