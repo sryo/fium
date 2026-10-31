@@ -9,11 +9,14 @@ mkdir -p ~/.claude/skills && ln -sfn ~/Documents/fium/skills/fium ~/.claude/skil
 ```
 
 ## Use
+Ask your agent in plain words, and the fium skill picks the step:
+- "Start a project that does X": it makes the repo from the templates and writes the goals first.
+- "Bring perch in line": it fixes what the checker finds, one rule at a time.
+- "Did this change make anything cost more?": it runs the bench and asks you before accepting a cost.
+- `/fium across <goal>`: one goal across several repos. It researches, plans, runs one session per repo, and merges after your yes.
+
+To see where your repos stand yourself:
 ```bash
-~/Documents/fium/fium new ~/Documents/<name>
-~/Documents/fium/fium check ~/Documents/perch
 ~/Documents/fium/fium check --all ~/Documents
 ~/Documents/fium/fium status
 ```
-
-`new` starts a project from the templates. Each finding names a rule in RULES.md and the fix. `--all` checks every repo in the folder and also runs each one's own checks. `status` shows each repo's branches and worktrees.

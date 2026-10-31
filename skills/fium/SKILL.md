@@ -37,6 +37,6 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 After a working day or a live run, mine what agents actually did. `fium sleep mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/sleep.json` adds sources, hint tables and gates (`fium sleep --help`). `learn` keeps each fix as a lesson that `replay` checks. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).
 
 ## Across repos
-For one goal across several repos (`/fium across <goal>`), read `across.md` beside this file and follow it.
+For one goal across several repos (`/fium across <goal>`), read `across.md` beside this file and follow it. Even in one repo, `fium grep <name>` finds a name's users in every repo before you rename or remove it, and `fium status` shows each repo's branches.
 
 To improve fium itself, propose rule or template changes from `fium survey` to the user.
