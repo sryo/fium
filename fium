@@ -133,7 +133,7 @@ def ratio_range(base, run, n=2000):
     return out[int(0.025 * n)], out[int(0.975 * n) - 1]
 
 
-def judge(name, base, run, rel, limit, priced, abs_=0):
+def judge(name, base, run, rel, limit, priced, abs_=0, slack=0):
     if run is None:
         return {"metric": name, "verdict": "missing"}
     lower = base.get("dir", "lower") == "lower"
@@ -171,6 +171,9 @@ def judge(name, base, run, rel, limit, priced, abs_=0):
         worse = mr > mb if lower else mr < mb
         better = mr < mb if lower else mr > mb
         v = "worse" if worse else "better" if better else "same"
+    # Slack is the user's own allowance for a metric they don't mind growing a little (caps.json).
+    if v == "worse" and slack and mb and abs(mr - mb) / abs(mb) <= slack:
+        v = "grew"
     # An exact metric's prices cover only the growth they add up to; a noisy one's cover it while it lasts.
     if v == "worse" and name in priced and (noisy or abs(mr - mb) <= priced[name]):
         v = "priced"
@@ -182,7 +185,9 @@ def price_compare(base_path, run_path, noise_path=None, priced=None):
     noise = json.load(open(noise_path)) if noise_path else {}
     rel, abs_ = noise.get("rel", {}), noise.get("abs", {})
     limits = {**base.get("limits", {}), **run.get("limits", {})}
-    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), priced or {}, abs_.get(n, 0))
+    caps = Path(base_path).parent / "caps.json"
+    slack = json.load(open(caps)).get("slack", {}) if caps.exists() else {}
+    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), priced or {}, abs_.get(n, 0), slack.get(n, 0))
             for n, m in base["metrics"].items()]
 
 

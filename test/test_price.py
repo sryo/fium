@@ -108,6 +108,14 @@ class Price(unittest.TestCase):
         self.assertEqual(v["calls"]["verdict"], "priced")
         self.assertEqual(code, 0)
 
+    def test_slack_lets_a_metric_grow_as_far_as_the_user_allows(self):
+        b = self.write("b.json", {"dash": metric([1000], kind="bytes"), "t": metric([500], kind="bytes")})
+        (self.d / "caps.json").write_text(json.dumps({"slack": {"dash": 0.1}}))
+        code, v = self.compare(b, self.write("r.json", {"dash": metric([1080], kind="bytes"), "t": metric([500], kind="bytes")}))
+        self.assertEqual((v["dash"]["verdict"], code), ("grew", 0))
+        code, v = self.compare(b, self.write("r2.json", {"dash": metric([1200], kind="bytes"), "t": metric([501], kind="bytes")}))
+        self.assertEqual((v["dash"]["verdict"], v["t"]["verdict"], code), ("worse", "worse", 1))
+
     def test_missing_metric_fails(self):
         b = self.write("b.json", {"a": metric([1], kind="count"), "b": metric([1], kind="count")})
         r = self.write("r.json", {"a": metric([1], kind="count")})
