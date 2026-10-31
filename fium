@@ -100,6 +100,7 @@ def check(root):
 # A limit kind is judged only against its limit. A move no bigger than the noise file's abs for that metric is same.
 import math, random, statistics, subprocess
 
+MIN_N = 5
 NOISY = {"time", "tokens"}
 DEFAULT_REL = 0.10
 TRAILER = re.compile(r"^(Price|Bench-Accepted):\s*([^;]+);\s*([^;]+?)\s*->\s*([^;]+?);\s*buys:\s*(.*?)(?:;\s*tried:\s*(.*?))?;\s*owner:\s*(.+)$", re.M)
@@ -145,7 +146,14 @@ def judge(name, base, run, rel, limit, priced, abs_=0):
         v = "same"
     elif abs(mr - mb) <= abs_:
         v = "same"
-    elif noisy and len(b) > 1 and len(r) > 1:
+    elif noisy and min(len(b), len(r)) < MIN_N:
+        # Too few reps for a range (agent evals): judge the median against the band, and say so.
+        point = mr / mb if mb else float("inf")
+        if not lower:
+            point = 1 / point if point else float("inf")
+        v = "worse" if point > 1 + rel else "better" if point < 1 - rel else "same"
+        row["low_n"] = True
+    elif noisy:
         lo, hi = ratio_range(b, r)
         row["range"] = [round(lo, 4), round(hi, 4)]
         if not lower:
@@ -239,7 +247,7 @@ def price_main(a):
         print(json.dumps(rows))
     else:
         for r in rows:
-            print(f"{r['verdict']:>12}  {r['metric']}: {r.get('base')} -> {r.get('run')}" + (f"  range {r['range']}" if "range" in r else ""))
+            print(f"{r['verdict'] + ('?' if r.get('low_n') else ''):>12}  {r['metric']}: {r.get('base')} -> {r.get('run')}" + (f"  range {r['range']}" if "range" in r else ""))
     vs = {r["verdict"] for r in rows}
     sys.exit(1 if vs & {"worse", "limit", "missing"} else 3 if "inconclusive" in vs else 0)
 

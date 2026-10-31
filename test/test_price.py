@@ -51,8 +51,8 @@ class Price(unittest.TestCase):
         self.assertEqual(v["t"]["verdict"], "better")
 
     def test_noisy_borderline_is_inconclusive_and_blocks(self):
-        b = self.write("b.json", {"t": metric([100, 140, 80, 120, 90])})
-        r = self.write("r.json", {"t": metric([115, 150, 95, 135, 100])})
+        b = self.write("b.json", {"t": metric([100, 140, 80, 120, 90, 110])})
+        r = self.write("r.json", {"t": metric([115, 150, 95, 135, 100, 125])})
         code, v = self.compare(b, r)
         self.assertEqual(v["t"]["verdict"], "inconclusive")
         self.assertEqual(code, 3)
@@ -63,6 +63,17 @@ class Price(unittest.TestCase):
         r = self.write("r.json", {"turns": m([59, 57, 61])})
         _, v = self.compare(b, r)
         self.assertNotEqual(v["turns"]["verdict"], "worse")
+
+    def test_few_reps_judge_the_median_and_say_so(self):
+        b = self.write("b.json", {"t": metric([100, 140, 80])})
+        worse = self.write("w.json", {"t": metric([130, 150, 120])})
+        same = self.write("s.json", {"t": metric([102, 139, 85])})
+        code, v = self.compare(b, worse)
+        self.assertEqual((v["t"]["verdict"], v["t"].get("low_n")), ("worse", True))
+        self.assertEqual(code, 1)
+        code, v = self.compare(b, same)
+        self.assertEqual((v["t"]["verdict"], v["t"].get("low_n")), ("same", True))
+        self.assertEqual(code, 0)
 
     def test_counts_any_increase_is_worse(self):
         b = self.write("b.json", {"calls": metric([4], kind="count")})
