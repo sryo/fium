@@ -283,6 +283,17 @@ class Check(unittest.TestCase):
         make(self.root, **{"DESIGN.md": DESIGN.replace("  primary:", "  primary")})
         self.assertIn("D1", rules(check(self.root)[1], "error"))
 
+    def test_design_md_theme_overrides(self):
+        themed = DESIGN.replace("name: demo\n", "name: demo\nthemes: [light, dark]  # colors.x-dark overrides colors.x\nomitted:\n  - \"--a-*\"\n")
+        make(self.root, **{"DESIGN.md": themed.replace("  primary:", "  primary-dark: \"#fff\"\n  primary:")})
+        self.assertNotIn("D1", rules(check(self.root)[1]))
+        for body, msg in ((themed.replace("  primary:", "  ink-dark: \"#fff\"\n  primary:"), "colors.ink-dark has no base"),
+                          (themed.replace("[light, dark]", "[light]").replace("  primary:", "  primary-dark: \"#fff\"\n  primary:"),
+                           "colors.primary-dark: theme dark isn't in themes"),
+                          (themed.replace("omitted:\n  - \"--a-*\"", "omitted: --a-*"), "omitted isn't a list")):
+            make(self.root, **{"DESIGN.md": body}, **{"CLAUDE.md": None})
+            self.assertIn(msg, [x["msg"] for x in check(self.root)[1] if x["rule"] == "D1"])
+
     def test_memory_files_carry_name_and_description(self):
         make(self.root)
         conf = Path(self.tmp.name) / "claude"

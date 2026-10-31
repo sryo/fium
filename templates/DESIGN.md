@@ -1,6 +1,8 @@
 ---
 version: alpha
 name: NAME
+# themes: [light, dark]  # then colors.primary-dark overrides colors.primary
+# omitted: ["--a-*"]  # code names left out on purpose
 colors:
   primary: "#1A1C1E"
 typography:

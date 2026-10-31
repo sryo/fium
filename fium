@@ -203,18 +203,33 @@ def check_design(root):
     m = re.match(r"---\n(.*?)\n---\n", text, re.S)
     if not m:
         return [finding("D1", "error", "DESIGN.md", "no YAML front matter", "open with ---, the tokens, --- (templates/DESIGN.md)")]
-    paths, stack, bad, refs = set(), [], [], []
+    values, stack, bad, refs, lists = {}, [], [], [], set()
     for n, l in enumerate(m[1].splitlines(), 2):
         if not l.strip() or l.lstrip().startswith("#"):
             continue
         y = YAML_LINE.fullmatch(l.rstrip())
         if not y:
-            bad.append(str(n))
+            if re.fullmatch(r" +- \S.*", l) and stack:
+                lists.add(".".join(k for _, k in stack))
+            else:
+                bad.append(str(n))
             continue
         stack = [s for s in stack if s[0] < len(y[1])] + [(len(y[1]), y[2].strip("\"'"))]
-        paths.add(".".join(k for _, k in stack))
+        values[".".join(k for _, k in stack)] = re.sub(r"\s+#.*", "", y[3] or "").strip()
         refs += re.findall(r"\{([\w.-]+)\}", y[3] or "")
-    out = []
+    paths, out = set(values), []
+    # Themes: `themes: [light, dark]`, and a key ending in -<theme> overrides its base key.
+    themes = re.findall(r"[\w-]+", values.get("themes", ""))
+    for p in sorted(paths):
+        base, _, t = p.rpartition("-")
+        if not base:
+            continue
+        if t in themes and base not in paths:
+            out.append(finding("D1", "error", "DESIGN.md", f"{p} has no base", f"add {base}, or rename the key"))
+        elif base in paths and t in ("light", "dark") and t not in themes:
+            out.append(finding("D1", "error", "DESIGN.md", f"{p}: theme {t} isn't in themes", f"list it: themes: [..., {t}]"))
+    if "omitted" in values and not (values["omitted"].startswith("[") or not values["omitted"] and "omitted" in lists):
+        out.append(finding("D1", "error", "DESIGN.md", "omitted isn't a list", "omitted: [\"--a-*\"], or one '- item' per line"))
     if bad:
         out.append(finding("D1", "error", "DESIGN.md", "front matter lines that don't parse: " + ", ".join(bad),
                            "each line is 'key: value' or 'key:' with deeper keys under it"))
