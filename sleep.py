@@ -3,6 +3,10 @@
 
   sleep.py [--repo DIR] mine|digest [--stale]|learn|replay|check
 Config: <repo>/bench/sleep.json. State and signals: $FIUM_HOME (~/.fium)/sleep/<repo>/.
+  projects   ~/.claude/projects dirs to mine, by name substring (default: the repo's name)
+  tools      regex over tool names: mine only matching calls and the corrections that follow them,
+             for a tool other projects call (e.g. "^mcp__perch__"); each error still names the next call
+  journals, hints, hint_consts, known, lessons, gates: see RULES.md S and figma-cdp docs/sleep-loop.md
 """
 import argparse, ast, datetime, difflib, json, os, random, re, subprocess, sys
 
@@ -129,8 +133,8 @@ def transcripts(srcs, since):
 
 
 def mine_file(path, since):
-    proj, out = project(path), []
-    uses, last_use, chain = {}, None, None
+    proj, out, tools = project(path), [], CFG.get("tools")
+    uses, last_use, chain, waiting = {}, None, None, []
     sig = lambda kind, ts, sess, **kw: out.append({"kind": kind, "project": proj, "source": "transcript", "file": path,
                                                    "session": sess, "ts": ts, **kw})
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -153,6 +157,8 @@ def mine_file(path, since):
                 said = text_of(content).strip()
                 if since and t and t < since or not said or said.startswith("<") or row.get("isMeta"):
                     continue
+                if tools and not (last_use and re.search(tools, last_use["name"])):
+                    continue
                 if said.startswith("[Request interrupted"):
                     sig("correction", ts, sess, sig="interrupted", text=excerpt(said), after=last_use and last_use["name"])
                 elif CORRECTION.match(said):
@@ -166,7 +172,11 @@ def mine_file(path, since):
                     u = {"name": c.get("name", ""), "input": c.get("input") or {}, "ts": t}
                     u["shape"] = shape(u["name"], u["input"])
                     u["flat"] = json.dumps(u["input"], sort_keys=True)[:4000]
-                    uses[c.get("id")] = last_use = u
+                    for s in waiting:
+                        s["next"] = u["shape"]
+                    waiting, last_use = [], u
+                    if not tools or re.search(tools, u["name"]):
+                        uses[c.get("id")] = u
                 elif c.get("type") == "tool_result":
                     u = uses.pop(c.get("tool_use_id"), None)
                     if not u or since and t and t < since:
@@ -176,6 +186,7 @@ def mine_file(path, since):
                     if failed:
                         line1 = error_line(body)
                         sig("error", ts, sess, sig=signature(line1), text=excerpt(line1), shape=u["shape"], call=excerpt(u["flat"]))
+                        waiting.append(out[-1])
                     if u["ts"] and t and not WAITS.match(u["name"]) and not u["input"].get("run_in_background"):
                         secs = (t - u["ts"]).total_seconds()
                         if secs >= SLOW_S:
@@ -279,12 +290,14 @@ def cluster(signals, known):
     by = {}
     for s in signals:
         c = by.setdefault((s["kind"], s["sig"]), {"kind": s["kind"], "sig": s["sig"], "project": s["project"], "count": 0,
-                                                   "value": 0, "sessions": set(), "evidence": [], "last": "", "hinted": False})
+                                                   "value": 0, "sessions": set(), "evidence": [], "last": "", "hinted": False, "next": {}})
         c["count"] += 1
         c["value"] += s.get("value", 1)
         c["sessions"].add(s["session"])
         c["last"] = max(c["last"], s.get("ts") or "")
         c["hinted"] = c["hinted"] or s.get("hinted", False)
+        if s.get("next"):
+            c["next"][s["next"]] = c["next"].get(s["next"], 0) + 1
         if len(c["evidence"]) < 5:
             c["evidence"].append({k: s[k] for k in ("session", "ts", "text", "call", "value", "source") if k in s})
     table = next(iter(helper_tables().values()), [])
@@ -336,6 +349,8 @@ def cmd_digest(a):
               f"`{c['sig'][:80]}` | {c['target']} |")
     for i, c in enumerate(picks, 1):
         print(f"\n## {i}. {c['sig'][:120]}")
+        if c["next"]:
+            print("- next: " + ", ".join(f"{k} {v}" for k, v in sorted(c["next"].items(), key=lambda kv: -kv[1])[:5]))
         for e in c["evidence"][:3]:
             print(f"- {e.get('session', '')} {e.get('ts', '')}: {e.get('text') or e.get('call', '')}")
     if a.mark:
@@ -518,7 +533,7 @@ def cmd_check(a):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", help="the project (default: the current directory's git toplevel)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("mine")

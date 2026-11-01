@@ -159,6 +159,34 @@ class Sleep(unittest.TestCase):
         self.assertEqual({s["project"] for s in sig}, {"zebra"})
         self.assertEqual(sum(s["kind"] == "error" for s in sig), 3)  # 2 from the zebra transcript, 1 from the journal
 
+    def test_mine_tools_keeps_only_matching_calls_and_names_what_came_next(self):
+        # A consumer project's session: perch fails, the agent works around it with Bash, which also fails.
+        self.config({"projects": ["demo"], "tools": "^mcp__perch__"})
+        self.write(os.path.join(self.src, "S1.jsonl"), [
+            use("c1", "2026-10-30T10:00:00Z", "mcp__perch__click", {"selector": "#go"}),
+            result("c1", "2026-10-30T10:00:01Z", "tab_not_visible: the tab is hidden", True),
+            use("c2", "2026-10-30T10:00:02Z", "Bash", {"command": "osascript -e 'tell application \"System Events\" to x'"}),
+            result("c2", "2026-10-30T10:00:03Z", "Exit code 1\nexecution error", True),
+            human("2026-10-30T10:00:04Z", "no, don't steal focus"),
+            use("c3", "2026-10-30T10:00:05Z", "mcp__perch__click", {"selector": "#go"}),
+            result("c3", "2026-10-30T10:00:06Z", "tab_not_visible: the tab is hidden", True),
+            use("c4", "2026-10-30T10:00:07Z", "mcp__perch__activate_tab", {}),
+            result("c4", "2026-10-30T10:00:08Z", "ok"),
+            human("2026-10-30T10:00:09Z", "stop clicking"),
+        ])
+        os.remove(os.path.join(self.src, "S1", "subagents", "agent-w.jsonl"))
+        out = os.path.join(self.tmp, "signals.jsonl")
+        self.sleep("mine", "--all", "--source", self.src, "--out", out)
+        sig = [json.loads(l) for l in Path(out).read_text().splitlines()]
+        errs = [s for s in sig if s["kind"] == "error"]
+        self.assertEqual([(s["shape"], s["next"]) for s in errs], [("click", "osascript"), ("click", "activate_tab")])
+        self.assertEqual([s["text"] for s in sig if s["kind"] == "correction"], ["stop clicking"])
+        self.assertEqual([(s["shape"], s["value"]) for s in sig if s["kind"] == "retry"], [("click", 2)])
+        self.sleep("digest", out, "--json", os.path.join(self.tmp, "d.json"), lessons=self.lessons([]))
+        click = next(c for c in json.loads(Path(self.tmp, "d.json").read_text())["all"] if c["kind"] == "error")
+        self.assertEqual(click["next"], {"osascript": 1, "activate_tab": 1})
+        self.assertIn("tools", self.sleep("--help"))
+
     def test_digest_clusters_ranks_and_marks_what_is_already_known(self):
         self.mine("--since", "2026-10-01")
         sigs = os.path.join(self.tmp, "signals.jsonl")
