@@ -61,7 +61,7 @@ A change lands only if it costs no more than before, unless the user accepts the
 - **K6** The user chooses how firm each cap is, in one `Caps:` line under GOALS.md's How we know. A digit per kind sets the default: `q` quality, `k` tokens, `n` counts and loc, `b` bytes, `t` time. `0` is only reported. `1` may grow by its slack (10%, or `1:25` for 25%), and that verdict is `grew`, which doesn't block. `2`, the default, needs a price. `3` never grows, not even with a price. `glob=digit` lines up one metric against its kind, and the last match wins: `Caps: q3 k2 n2 b1 t1 t.js*=2`. A line in a set number (Cloudflare's free tier) stays a `limit` in the baseline. `Topes:` is the same line. Only the user writes it.
 
 ## Learning (S)
-How a project learns from its own sessions, taken from figma-cdp's sleep loop (figma-cdp `docs/sleep-loop.md`).
+How a project learns from its own sessions, taken from figma-cdp's sleep loop.
 - **S1** Learn from what agents actually did, not from what the docs imagine they do. Periodically read past transcripts for failed calls, retries, stalls, heavy reads and the user's corrections, and weight the corrections highest. Fix the top few, plus one or two rare ones.
 - **S2** Every fix lands as a check that would fail without it: a test, an error text the code must print, or a rule a doc must keep. That way a later trim or rewrite can't silently forget it.
 - **S3** Put the fix where the agent is when it fails. An error message that names the fix beats a line in a doc. When a failure comes back after its fix, move the fix closer to that point.

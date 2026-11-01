@@ -6,7 +6,7 @@ Config: <repo>/bench/sleep.json. State and signals: $FIUM_HOME (~/.fium)/sleep/<
   projects   ~/.claude/projects dirs to mine, by name substring (default: the repo's name)
   tools      regex over tool names: mine only matching calls and the corrections that follow them,
              for a tool other projects call (e.g. "^mcp__perch__"); each error still names the next call
-  journals, hints, hint_consts, known, lessons, gates: see RULES.md S and figma-cdp docs/sleep-loop.md
+  journals, hints, hint_consts, known, lessons, gates: see RULES.md S
 """
 import argparse, ast, datetime, difflib, json, os, random, re, subprocess, sys
 
