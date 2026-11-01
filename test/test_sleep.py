@@ -187,6 +187,23 @@ class Sleep(unittest.TestCase):
         self.assertEqual(click["next"], {"osascript": 1, "activate_tab": 1})
         self.assertIn("tools", self.sleep("--help"))
 
+    def test_mine_reads_a_json_result_by_its_own_error(self):
+        self.write(os.path.join(self.src, "S1.jsonl"), [
+            use("j1", "2026-10-30T10:00:00Z", "mcp__perch__select", {"value": "Peru"}),
+            result("j1", "2026-10-30T10:00:01Z", json.dumps({"ok": False, "error": "no matching option after open", "candidates": ["Chile"]})),
+            use("j2", "2026-10-30T10:00:02Z", "mcp__perch__eval_js", {"js": "x.click()"}),
+            result("j2", "2026-10-30T10:00:03Z", json.dumps({"__perch_error": "Cannot read properties of null (reading 'click')",
+                                                             "__perch_error_name": "TypeError"}), True),
+            use("j3", "2026-10-30T10:00:04Z", "mcp__perch__file_upload", {"path": "/x/cv.pdf"}),
+            result("j3", "2026-10-30T10:00:05Z", json.dumps({"ok": False, "name": "cv.pdf", "size": 3})),
+            use("j4", "2026-10-30T10:00:06Z", "mcp__perch__eval_js", {"js": "1"}),
+            result("j4", "2026-10-30T10:00:07Z", json.dumps({"ok": True, "value": 1}))])
+        os.remove(os.path.join(self.src, "S1", "subagents", "agent-w.jsonl"))
+        out = os.path.join(self.tmp, "signals.jsonl")
+        self.sleep("mine", "--all", "--source", self.src, "--out", out)
+        self.assertEqual([s["sig"] for s in map(json.loads, Path(out).read_text().splitlines()) if s["kind"] == "error"],
+                         ["no matching option after open", "cannot read properties of null (reading <s>)", "file_upload: ok false"])
+
     def test_digest_clusters_ranks_and_marks_what_is_already_known(self):
         self.mine("--since", "2026-10-01")
         sigs = os.path.join(self.tmp, "signals.jsonl")

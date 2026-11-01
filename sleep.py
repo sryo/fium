@@ -87,6 +87,17 @@ def error_line(text):
     return lines[0] if lines else (text or "").strip()
 
 
+def json_result(body):
+    """A result that is one JSON object, else {}: tools like perch answer {"ok": false, "error": ...} without failing the call."""
+    if not body.lstrip().startswith("{") or len(body) > HEAVY_CHARS:
+        return {}
+    try:
+        j = json.loads(body)
+    except ValueError:
+        return {}
+    return j if isinstance(j, dict) else {}
+
+
 def signature(text):
     """What makes two failures the same: the first line, lowercased, with ids, hex tokens, quoted text and numbers blanked."""
     line = re.sub(r"\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{8,}\b", "<hex>", text or "").strip().split("\n", 1)[0].lower()
@@ -182,9 +193,11 @@ def mine_file(path, since):
                     if not u or since and t and t < since:
                         continue
                     body = text_of(c.get("content"))
-                    failed = bool(c.get("is_error")) or bool(FAILED.match(body))
+                    j = json_result(body)
+                    failed = bool(c.get("is_error")) or bool(FAILED.match(body)) or j.get("ok") is False
                     if failed:
-                        line1 = error_line(body)
+                        said = next((v for k, v in j.items() if k.endswith("error") and isinstance(v, str)), None)
+                        line1 = error_line(said) if said else f"{u['shape']}: ok false" if j.get("ok") is False else error_line(body)
                         sig("error", ts, sess, sig=signature(line1), text=excerpt(line1), shape=u["shape"], call=excerpt(u["flat"]))
                         waiting.append(out[-1])
                     if u["ts"] and t and not WAITS.match(u["name"]) and not u["input"].get("run_in_background"):
