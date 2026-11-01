@@ -46,8 +46,12 @@ def exact(read):
 
 def wall_ms(cmd, cwd):
     t = time.perf_counter()
-    subprocess.run(cmd, capture_output=True, cwd=cwd)
-    return round((time.perf_counter() - t) * 1000, 2)
+    r = subprocess.run(cmd, capture_output=True, cwd=cwd)
+    ms = round((time.perf_counter() - t) * 1000, 2)
+    # A run that failed timed its failure, which is usually faster.
+    if r.returncode:
+        raise SystemExit(f"bench: {' '.join(map(str, cmd))} exited {r.returncode}, so it isn't a timing: {r.stderr.decode(errors='replace').strip()[-300:]}")
+    return ms
 
 
 def timings(fiums, reps):

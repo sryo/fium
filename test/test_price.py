@@ -132,6 +132,13 @@ class Price(unittest.TestCase):
         self.assertEqual(v["b"]["verdict"], "missing")
         self.assertEqual(code, 1)
 
+    def test_a_metric_with_no_samples_is_missing_not_a_crash(self):
+        for base, run in (([1, 2], []), ([], [1, 2])):
+            b = self.write("b.json", {"t": metric(base)})
+            r = self.write("r.json", {"t": metric(run)})
+            code, v = self.compare(b, r)
+            self.assertEqual((code, v["t"]["verdict"]), (1, "missing"), (base, run))
+
     def test_paired_range_is_the_bootstrap_of_rep_by_rep_ratios(self):
         # The same numbers through Lede's compare.mjs give [1.0500, 1.1650]: one judge, whichever runs it.
         b = self.write("b.json", {"t": metric([10, 10.2, 9.9, 10.1, 10, 9.8, 10.3, 10])})

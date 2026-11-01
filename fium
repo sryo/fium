@@ -294,7 +294,7 @@ def ratio_range(base, run, n=2000):
 
 
 def judge(name, base, run, rel, limit, priced, abs_=0, cap=(2, 0)):
-    if run is None:
+    if run is None or not run.get("samples") or not base.get("samples"):
         return {"metric": name, "verdict": "missing"}
     lower = base.get("dir", "lower") == "lower"
     b, r = base["samples"], run["samples"]

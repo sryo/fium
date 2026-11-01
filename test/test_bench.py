@@ -42,6 +42,13 @@ class Bench(unittest.TestCase):
         for name, m in exact(reader(head)).items():
             self.assertEqual(base["metrics"][name], m, name)
 
+    def test_a_command_that_fails_is_not_a_timing(self):
+        sys.path.insert(0, str(ROOT / "bench"))
+        from run import wall_ms
+        self.assertGreaterEqual(wall_ms([sys.executable, "-c", ""], ROOT), 0)
+        with self.assertRaisesRegex(SystemExit, "exited 3"):
+            wall_ms([sys.executable, "-c", "raise SystemExit(3)"], ROOT)
+
     def test_paired_with_a_rev_that_is_not_a_commit_fails_and_says_why(self):
         r = subprocess.run([sys.executable, str(BENCH), "--paired", "bench/runs/x.json"], capture_output=True, text=True, cwd=ROOT)
         self.assertNotEqual(r.returncode, 0)
