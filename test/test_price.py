@@ -161,6 +161,11 @@ class Price(unittest.TestCase):
         n.write_text(out)
         self.assertEqual(self.compare(b, r, "--noise", str(n))[1]["t"]["verdict"], "limit")
 
+    def test_noise_skips_a_metric_too_few_reps_to_range(self):
+        b = self.write("b.json", {"t": metric([10])})
+        r = self.write("r.json", {"t": metric([10, 12, 9, 15, 11])})
+        self.assertEqual(json.loads(run("noise", b, r)[1]), {"rel": {}, "abs": {}})
+
     def test_a_time_that_stays_at_zero_is_same(self):
         b = self.write("b.json", {"t": metric([0, 0, 0, 0])})
         r = self.write("r.json", {"t": metric([0, 0, 0, 0])})

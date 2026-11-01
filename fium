@@ -392,8 +392,9 @@ def noise(base_path, run_path, floor=DEFAULT_REL, abs_globs=()):
     base, run = json.load(open(base_path))["metrics"], json.load(open(run_path))["metrics"]
     rel, abs_ = {}, {}
     for n, m in base.items():
-        b, r = m.get("samples"), (run.get(n) or {}).get("samples")
-        if not (b and r and m.get("noisy", m.get("kind", "time") in NOISY)):
+        b, r = m.get("samples") or [], (run.get(n) or {}).get("samples") or []
+        # Like compare, a metric with fewer than MIN_N reps on a side has no range to take noise from.
+        if min(len(b), len(r)) < MIN_N or not m.get("noisy", m.get("kind", "time") in NOISY):
             continue
         lo, hi = (round(x, 4) for x in ratio_range(b, r))
         rel[n] = max(floor, math.ceil(max(1 - lo, hi - 1) * 100 - 1e-9) / 100)
