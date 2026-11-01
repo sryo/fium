@@ -28,6 +28,11 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 2. If it has a bench, make it write the run format (K2) and gate it with `fium compare`. If it has none, add the cheapest one that measures its top goal.
 3. Leave renames that would break suites (tests/ → test/) for the user to decide.
 
+## Build a change (W)
+1. Read GOALS.md and the code it touches, then reply once with the plan and the questions (W1).
+2. On yes: tests first and red, code to green, one real run, `fium compare`.
+3. Report each R, the run and the numbers. Push only on the user's OK.
+
 ## Judge a change
 1. Quote each proposal's price before building (K4).
 2. Run the bench, then `fium compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`. The base can be a commit instead of a file: compare keeps every clean run it judges in `~/.fium/runs`.

@@ -287,7 +287,8 @@ class Stale(unittest.TestCase):
                 self.assertEqual((code, json.loads(out)[0]["verdict"]), (0, "same"), rev)
             code, _ = run("compare", "--json", "deadbeef", str(self.d / "r.json"), cwd=elsewhere)
             self.assertNotEqual(code, 0)
-        self.assertTrue(list(Path(os.environ["FIUM_HOME"], "runs").glob(self.head + ".json")))
+        # Kept under the repo's own folder, named after its main checkout, so a worktree's runs land there too.
+        self.assertTrue(list(Path(os.environ["FIUM_HOME"], "runs", Path(self.tmp.name).name).glob(self.head + ".json")))
 
     def test_a_run_with_a_null_or_missing_commit_is_judged_and_not_kept(self):
         for stamp in ({"commit": None}, {}):

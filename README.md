@@ -5,7 +5,7 @@ fium gives you one way to lay out, measure and improve your projects: rules your
 ## Install
 ```bash
 git clone https://github.com/sryo/fium ~/Documents/fium
-mkdir -p ~/.claude/skills && ln -sfn ~/Documents/fium/skills/fium ~/.claude/skills/fium
+mkdir -p ~/.claude/skills && ln -sfn ~/Documents/fium ~/.claude/skills/fium
 ```
 
 ## Use

@@ -25,6 +25,11 @@ class Bench(unittest.TestCase):
         self.assertEqual(len(m["check_ms"]["samples"]), 2)
         self.assertEqual(run["limits"], {"untested_checks": 0, "unnamed_rules": 0})
 
+    def test_a_run_with_no_path_lands_outside_the_repo_under_fium_home(self):
+        r = subprocess.run([sys.executable, str(BENCH), "--reps", "1"], capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(Path(r.stdout.strip()).parent, Path(os.environ["FIUM_HOME"], "runs", "fium"))
+
     def test_paired_runs_time_the_baseline_commit_and_head_alternately(self):
         head = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
         with tempfile.TemporaryDirectory() as t:
@@ -38,8 +43,8 @@ class Bench(unittest.TestCase):
             self.assertEqual(len(base["metrics"][name]["samples"]), 3)
             self.assertEqual(len(run["metrics"][name]["samples"]), 3)
         sys.path.insert(0, str(ROOT / "bench"))
-        from run import exact, reader
-        for name, m in exact(reader(head)).items():
+        from run import code, exact, reader
+        for name, m in exact(reader(head), code(head)).items():
             self.assertEqual(base["metrics"][name], m, name)
 
     def test_a_command_that_fails_is_not_a_timing(self):

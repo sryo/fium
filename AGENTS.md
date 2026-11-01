@@ -1,6 +1,21 @@
 # fium
 
-The rules every project follows (RULES.md), templates for new ones (templates/), a checker (`fium`) and the skill that teaches agents both (skills/fium/). GOALS.md says what fium is for.
+## Layout
+- `RULES.md`: the rules
+- `GOALS.md`: what fium is for
+- `README.md`: install, use
+- `AGENTS.md`: build, test
+- `SKILL.md`: the skill
+- `across.md`: the skill's /fium across
+- `fium`: CLI entry
+- `check.py`: check
+- `compare.py`: compare, noise, scope
+- `repos.py`: survey, status, grep, new
+- `sleep.py`: sleep
+- `templates/`: what new copies
+- `bench/`: fium's bench
+- `test/`: a file per module
+- `LICENSE`: also new's
 
 ## Test
 ```bash

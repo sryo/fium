@@ -160,6 +160,25 @@ class Check(unittest.TestCase):
         _, f = check(self.root)
         self.assertTrue({"R3", "R4"} <= rules(f))
 
+    def test_a_fix_that_touches_no_test_warns(self):
+        make(self.root)
+        g = lambda *a: subprocess.run(["git", "-C", str(self.root), *a], capture_output=True, check=True)
+        g("init", "-q"); g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "start", "--allow-empty")
+        def commit(msg, **files):
+            for name, body in files.items():
+                (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+                (self.root / name).write_text(body)
+            g("add", "-A"); g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", msg)
+        commit("Fix the parser on empty input", **{"parse.py": "x = 1\n"})
+        commit("fix: tested", **{"parse.py": "x = 2\n", "test/test_parse.py": "pass\n"})
+        commit("Fix a typo in the README", **{"README.md": README + "x\n"})
+        commit("Add a prefix option", **{"parse.py": "x = 3\n"})
+        _, f = check(self.root)
+        hits = [x for x in f if x["rule"] == "W2"]
+        self.assertEqual([h["level"] for h in hits], ["warn"], hits)
+        self.assertIn("Fix the parser on empty input", hits[0]["msg"])
+        self.assertIn("test that fails on the bug", hits[0]["fix"])
+
     def test_all_scans_git_repos(self):
         make(self.root)
         subprocess.run(["git", "init", "-q", str(self.root)])
@@ -317,6 +336,7 @@ class Check(unittest.TestCase):
         self.assertTrue((root / ".git").exists())
         self.assertEqual(os.readlink(root / "CLAUDE.md"), "AGENTS.md")
         self.assertTrue((root / "bench" / "baseline.json").exists())
+        self.assertEqual((root / "LICENSE").read_text(), (FIUM.parent / "LICENSE").read_text())
         self.assertNotIn("NAME", (root / "README.md").read_text())
         self.assertFalse((root / "DESIGN.md").exists())
         code, f = check(root)
@@ -333,9 +353,19 @@ ROOT = FIUM.parent
 class Docs(unittest.TestCase):
     def test_every_cited_rule_id_exists(self):
         ids = set(re.findall(r"\*\*([A-Z]\d+)\b", (ROOT / "RULES.md").read_text()))
-        for doc in ("skills/fium/SKILL.md", "AGENTS.md"):
+        for doc in ("SKILL.md", "across.md", "AGENTS.md"):
             cited = set(re.findall(r"\b([A-Z]\d+)\b", (ROOT / doc).read_text()))
             self.assertEqual(cited - ids, set(), doc)
+
+    def test_layout_names_every_top_level_entry_and_nothing_else(self):
+        # Each file says what it's for in one place, and a moved or new one can't go unlisted.
+        layout = re.search(r"^## Layout\n(.*?)(?=^## |\Z)", (ROOT / "AGENTS.md").read_text(), re.M | re.S)
+        self.assertTrue(layout, "AGENTS.md has no ## Layout")
+        listed = set(re.findall(r"^- `([^`/]+)/?`", layout.group(1), re.M))
+        tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files"], capture_output=True, text=True).stdout.split()
+        top = {f.split("/")[0] for f in tracked if (ROOT / f).exists()} - {"CLAUDE.md"}
+        self.assertEqual(top - listed, set(), "tracked but not in ## Layout")
+        self.assertEqual(listed - top, set(), "in ## Layout but not tracked")
 
     def test_help_describes_every_subcommand(self):
         out = subprocess.run([sys.executable, str(FIUM), "--help"], capture_output=True, text=True).stdout

@@ -3,15 +3,22 @@
 Writes a run in the price format (RULES.md K2). Usage: bench/run.py [--reps N] [--paired [REV]] [out.json]
 --paired also measures REV (default: bench/baseline.json's commit), timing both checkers alternately in this
 session so machine drift cancels out, and prints the base path, then the run path."""
-import argparse, json, re, subprocess, sys, tempfile, time
+import argparse, json, os, re, subprocess, sys, tempfile, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-READ = ["RULES.md", "AGENTS.md", "skills/fium/SKILL.md"]
+# Each entry is a doc an agent reads, by its path now and then any older one, so a base from before a move still counts it.
+READ = [("RULES.md",), ("AGENTS.md",), ("SKILL.md", "skills/fium/SKILL.md")]
 
 
 def git(*a):
     return subprocess.run(["git", "-C", str(ROOT), *a], capture_output=True, text=True).stdout.strip()
+
+
+def code(rev):
+    # The checker's own code: fium and the modules beside it. The index stands for the working tree.
+    names = git("ls-tree", "--name-only", rev).split() if rev else git("ls-files").split()
+    return [n for n in names if n == "fium" or ("/" not in n and n.endswith(".py"))]
 
 
 def reader(rev):
@@ -32,15 +39,15 @@ def unnamed_rules(rules):
     return sum(1 for l in rules.splitlines() if l.startswith("- ") and not re.match(r"- \*\*[A-Z]\d+", l))
 
 
-def exact(read):
+def exact(read, files):
     rules = read("RULES.md")
     m = lambda kind, x: {"dir": "lower", "kind": kind, "samples": [x]}
     return {
         "rules": m("count", len(rule_ids(rules))),
         "untested_checks": m("count", untested_checks(rules, read("test/test_check.py"))),
         "unnamed_rules": m("count", unnamed_rules(rules)),
-        "read_bytes": m("bytes", sum(len(read(p).encode()) for p in READ)),
-        "loc": m("loc", sum(1 for p in ("fium", "sleep.py") for l in read(p).splitlines() if l.strip())),
+        "read_bytes": m("bytes", sum(len(next((t for t in map(read, ps) if t), "").encode()) for ps in READ)),
+        "loc": m("loc", sum(1 for p in files for l in read(p).splitlines() if l.strip())),
     }
 
 
@@ -79,11 +86,12 @@ def main():
     # Stamp first, so the run names the code it measured (K2).
     commit, dirty = git("rev-parse", "HEAD"), bool(git("status", "--porcelain"))
     limits = {"untested_checks": 0, "unnamed_rules": 0}
-    out = Path(a.out) if a.out else ROOT / "bench" / "runs" / f"{commit[:12]}{'-dirty' if dirty else ''}.json"
+    runs = Path(os.environ.get("FIUM_HOME") or "~/.fium").expanduser() / "runs" / "fium"
+    out = Path(a.out) if a.out else runs / f"{commit[:12]}{'-dirty' if dirty else ''}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     if not a.paired:
         (t,) = timings([str(ROOT / "fium")], a.reps)
-        out.write_text(json.dumps({"commit": commit, "dirty": dirty, "metrics": {**exact(reader(None)), **t}, "limits": limits}, indent=1) + "\n")
+        out.write_text(json.dumps({"commit": commit, "dirty": dirty, "metrics": {**exact(reader(None), code(None)), **t}, "limits": limits}, indent=1) + "\n")
         return print(out)
     rev = json.loads((ROOT / "bench" / "baseline.json").read_text())["commit"] if a.paired == "baseline" else a.paired
     sha = git("rev-parse", "--verify", "-q", f"{rev}^{{commit}}")
@@ -91,12 +99,12 @@ def main():
         sys.exit(f"--paired: {rev!r} is not a commit. Put the output path before --paired, or write --paired=REV.")
     rev = sha
     with tempfile.TemporaryDirectory() as t:
-        old = Path(t, "fium")
-        old.write_text(reader(rev)("fium"))
-        tb, tr = timings([str(old), str(ROOT / "fium")], a.reps)
+        for p in code(rev):
+            Path(t, p).write_text(reader(rev)(p))
+        tb, tr = timings([str(Path(t, "fium")), str(ROOT / "fium")], a.reps)
     base_out = out.with_name(out.stem + ".base.json")
-    base_out.write_text(json.dumps({"commit": rev, "dirty": False, "metrics": {**exact(reader(rev)), **tb}, "limits": limits}, indent=1) + "\n")
-    out.write_text(json.dumps({"commit": commit, "dirty": dirty, "metrics": {**exact(reader(None)), **tr}, "limits": limits}, indent=1) + "\n")
+    base_out.write_text(json.dumps({"commit": rev, "dirty": False, "metrics": {**exact(reader(rev), code(rev)), **tb}, "limits": limits}, indent=1) + "\n")
+    out.write_text(json.dumps({"commit": commit, "dirty": dirty, "metrics": {**exact(reader(None), code(None)), **tr}, "limits": limits}, indent=1) + "\n")
     print(base_out, out)
 
 

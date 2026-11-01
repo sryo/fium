@@ -9,7 +9,7 @@ How every project here is laid out, measured and improved. Each rule has an id f
 - **F2 ✓** `CLAUDE.md` is a symlink to `AGENTS.md`.
 - **F3 ✓** `README.md`, following R.
 - **F4 ✓** `GOALS.md`, following G.
-- **F5 ✓** `LICENSE`. The default is the sryo license (templates/LICENSE).
+- **F5 ✓** `LICENSE`. The default is the sryo license (fium's own).
 - **F6 ✓** Agent docs (AGENTS.md, SKILL.md) have no `@` imports. When an import stops resolving, its text drops silently.
 - **F7 ✓** AGENTS.md has a `## Test` section with the command that runs the tests.
 - **F8 ✓** Checks fium can't know about (a doc budget, a copy test) go in `bench/checks`, one command per line. `fium check --all` runs them, and a failing one fails the project.
@@ -55,10 +55,17 @@ A change lands only if it costs no more than before, unless the user accepts the
   - A `limit` kind is judged only against its limit.
   - A price covers an exact metric's growth up to what its trailers add up to.
   - A run carries the `"commit"` it measured (`git rev-parse HEAD`) and `"dirty"`: whether `git status --porcelain` printed anything.
+  - Runs live in `~/.fium/runs/<repo>/`, not in the repo.
 - **K3** A worse, missing, limit or stale verdict blocks the change. A run is stale when its tree was dirty or its commit isn't HEAD. It is `carried`, and its numbers stand, when everything changed since matches an inert glob: the defaults plus any in `bench/inert` (one per line; a `!defaults` line drops the defaults; `bench/inert` itself is always inert). The defaults are the human docs, `test/`, `tests/`, noise and baseline files. Agent-facing docs such as SKILL.md and `references/` are never inert by default, since they change what a run measures. An unstamped run is flagged, not blocked. Inconclusive also blocks: its median is outside the noise band, but the range is too wide to call. Rerun it with more reps. With fewer than 5 reps on a side, a noisy metric is judged on its median against the band. The verdict is marked low-confidence (`low_n`, printed with a `?`), and a worse median still blocks.
 - **K4** Only the user sets a price, and before the work. A proposal quotes `<before> -> <predicted after>` per metric it moves, and quotes cheaper variants. The user's yes sets the price; a number over its quote, or an unquoted one that got worse, goes back to them before landing. One trailer per number: `Price: <metric>; <before> -> <after>; buys: <what>; tried: <variants the user turned down>; owner: "<the user's words>", <date>`. The agent never writes the owner's words.
 - **K5** When the score is equal, less code wins (`git diff --shortstat`). Refresh the baseline only in its own commit.
 - **K6** The user chooses how firm each cap is, in one `Caps:` line under GOALS.md's How we know. A digit per kind sets the default: `q` quality, `k` tokens, `n` counts and loc, `b` bytes, `t` time. `0` is only reported. `1` may grow by its slack (10%, or `1:25` for 25%), and that verdict is `grew`, which doesn't block. `2`, the default, needs a price. `3` never grows, not even with a price. `glob=digit` lines up one metric against its kind, and the last match wins: `Caps: q3 k2 n2 b1 t1 t.js*=2`. A line in a set number (Cloudflare's free tier) stays a `limit` in the baseline. `Topes:` is the same line. Only the user writes it.
+
+## Work (W)
+How a change goes from an idea to done.
+- **W1** Read the repo, then reply once: the plan (`R1…Rn`, each a result and the test that shows it, what's out, the price) and at most three questions, each with a default. Numbers, not adjectives. The user's yes takes the defaults and freezes the plan (K4).
+- **W2 ✓** Test first: each R's test names it and fails before the code; a fix starts with one that fails on the bug. Never edit an expectation to fit the code.
+- **W3** One goal, about 100 lines besides tests; "for now" is another change. Done is every R green and one real run. A problem the change caused is never deferred.
 
 ## Learning (S)
 How a project learns from its own sessions, taken from figma-cdp's sleep loop.
