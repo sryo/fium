@@ -147,6 +147,20 @@ class Price(unittest.TestCase):
         self.assertEqual(v["t"]["range"], [1.05, 1.165])
         self.assertEqual(v["t"]["verdict"], "inconclusive")
 
+    def test_noise_is_the_aa_range_rounded_up_to_a_percent_and_at_least_min(self):
+        # The A/A's range is [1.05, 1.165] (the test above): 16.5% rounds up to 17%; a calm metric gets the floor.
+        b = self.write("b.json", {"t": metric([10, 10.2, 9.9, 10.1, 10, 9.8, 10.3, 10]), "calm": metric([5] * 6),
+                                  "n": metric([3], kind="count")}, limits={"t": 1})
+        r = self.write("r.json", {"t": metric([10.9, 11.4, 10.2, 11.8, 10.5, 11.1, 12, 10.7]), "calm": metric([5] * 6),
+                                  "n": metric([3], kind="count")})
+        code, out = run("noise", b, r)
+        self.assertEqual((code, json.loads(out)), (0, {"rel": {"t": 0.17, "calm": 0.1}, "abs": {}}))
+        _, out = run("noise", b, r, "--min", "0.2", "--abs", "*=0.05", "--abs", "calm=0.5")
+        self.assertEqual(json.loads(out), {"rel": {"t": 0.2, "calm": 0.2}, "abs": {"t": 0.05, "calm": 0.5}})
+        n = self.d / "noise.json"
+        n.write_text(out)
+        self.assertEqual(self.compare(b, r, "--noise", str(n))[1]["t"]["verdict"], "limit")
+
     def test_a_time_that_stays_at_zero_is_same(self):
         b = self.write("b.json", {"t": metric([0, 0, 0, 0])})
         r = self.write("r.json", {"t": metric([0, 0, 0, 0])})

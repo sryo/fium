@@ -387,6 +387,22 @@ def price_compare(base_path, run_path, noise_path=None, priced=None, repo=None):
             for n, m in base["metrics"].items()]
 
 
+def noise(base_path, run_path, floor=DEFAULT_REL, abs_globs=()):
+    # rel: how far the A/A's range (as compare prints it) strays from 1, rounded up to a whole percent, at least floor.
+    base, run = json.load(open(base_path))["metrics"], json.load(open(run_path))["metrics"]
+    rel, abs_ = {}, {}
+    for n, m in base.items():
+        b, r = m.get("samples"), (run.get(n) or {}).get("samples")
+        if not (b and r and m.get("noisy", m.get("kind", "time") in NOISY)):
+            continue
+        lo, hi = (round(x, 4) for x in ratio_range(b, r))
+        rel[n] = max(floor, math.ceil(max(1 - lo, hi - 1) * 100 - 1e-9) / 100)
+        for g, v in abs_globs:
+            if fnmatch(n, g):
+                abs_[n] = v
+    return {"rel": rel, "abs": abs_}
+
+
 INERT = ["README.md", "GOALS.md", "AGENTS.md", "CLAUDE.md", "LICENSE", "test/*", "tests/*", "*noise.json", "*baseline.json"]
 
 
@@ -671,6 +687,11 @@ def main():
     pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
     pc.add_argument("--repo", help="repo whose Price: trailers --since reads (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
+    ns = sub.add_parser("noise", help="write noise.json for compare --noise from an A/A run, to stdout")
+    ns.add_argument("base"); ns.add_argument("run")
+    ns.add_argument("--min", type=float, default=DEFAULT_REL, help="the least rel any metric gets (default 0.10)")
+    ns.add_argument("--abs", action="append", default=[], metavar="METRIC=AMOUNT",
+                    help="a move this small is same; METRIC may be a glob, a later one wins")
     sub.add_parser("sleep", help="mine past sessions for failures and keep each fix as a lesson (fium sleep --help)")
     sub.add_parser("new", help="start a project from the templates").add_argument("name")
     sc = sub.add_parser("scope", help="which bench tasks a change can move")
@@ -695,6 +716,9 @@ def main():
         return scope_main(a)
     if a.cmd == "compare":
         return compare_main(a)
+    if a.cmd == "noise":
+        globs = [(g, float(v)) for g, _, v in (x.rpartition("=") for x in a.abs)]
+        return print(json.dumps(noise(a.base, a.run, a.min, globs), indent=2, ensure_ascii=False))
     if a.cmd == "survey":
         return survey_main(a)
     base = Path(a.path).expanduser()
