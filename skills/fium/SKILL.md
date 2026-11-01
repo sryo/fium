@@ -29,10 +29,11 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 3. Leave renames that would break suites (tests/ → test/) for the user to decide.
 
 ## Judge a change
-1. Run the bench, then `fium compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`. The base can be a commit instead of a file: compare keeps every clean run it judges in `~/.fium/runs`.
-2. If the verdict is better or same, land it. If it's inconclusive (exit 3), rerun with more reps. If it's worse, try three cheaper ways. If one is still worse, propose a `Price:` trailer with the numbers and ask the user (K4). Never cross a limit.
-3. Before a live run, state its token cost and how many reps you'll buy (L1, L2), predict each verdict (L5), and run only the tasks `fium scope <base>..HEAD` names (L6).
-4. A stale verdict means the run measured another commit or a dirty tree. Commit, then rerun on HEAD (K1, K3).
+1. Quote each proposal's price before building (K4).
+2. Run the bench, then `fium compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`. The base can be a commit instead of a file: compare keeps every clean run it judges in `~/.fium/runs`.
+3. Within its quote, land it with its `Price:` trailers. Inconclusive (exit 3): rerun with more reps. Over: try cheaper ways, then show the user the gap. Never cross a limit.
+4. Before a live run, state its token cost and how many reps you'll buy (L1, L2), predict each verdict (L5), and run only the tasks `fium scope <base>..HEAD` names (L6).
+5. A stale verdict means the run measured another commit or a dirty tree. Commit, then rerun on HEAD (K1, K3).
 
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. `fium sleep mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/sleep.json` adds sources, hint tables and gates (`fium sleep --help`). `learn` keeps each fix as a lesson that `replay` checks. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).
