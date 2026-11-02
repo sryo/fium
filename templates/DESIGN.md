@@ -16,16 +16,16 @@ rounded:
 bench/checks line: npx @google/design.md@0.4.0 lint DESIGN.md -->
 
 ## Overview
-The look and feel in a sentence or two, and who it is for.
+The product is X, told as Y; every screen leads with Z. Who it is for.
 
 ## Colors
-What each color is for, and when to use it.
+What each color means, kept to a few; text stays ink unless a color says something.
 
 ## Typography
-Which type style goes where.
+A few sizes, each named by its job.
 
 ## Layout
-The grid, spacing and how screens are arranged.
+The grid and spacing, and how you move between levels: what opens what, and where it animates from.
 
 ## Elevation & Depth
 How layers stack: shadows, borders, surfaces.
@@ -34,7 +34,7 @@ How layers stack: shadows, borders, surfaces.
 Corner radii and the shapes components use.
 
 ## Components
-Each component's tokens, and its states.
+The one shape every unit takes, and the states each view designs: loading, refreshing, empty, error, first run.
 
 ## Do's and Don'ts
-The few rules that keep the design consistent.
+The few rules that keep the design consistent. Before calling a change done: walk the keyboard path (focus comes back), turn on reduced motion, check dark and 375px, force each state, and read every sentence aloud.
