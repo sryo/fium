@@ -130,6 +130,15 @@ class Done(unittest.TestCase):
             self.assertIn("same?  ms", self.done()[1], f"{where}/noise.json says this number moves 30% between identical runs")
             (self.d / where / "noise.json").unlink()
 
+    def test_a_run_from_another_model_blocks(self):
+        env = lambda m: R.replace('}, open(', '}, "env": {"model": "%s"}}, open(' % m).replace('.items()}}', '.items()}')
+        self.write(**{"r.py": env("claude-opus-5-5")}); self.git("commit", "-qam", "opus")
+        self.write(**{"r.py": env("claude-sonnet-5-5")})
+        code, out = self.done()
+        self.assertIn("not comparable", out)
+        self.assertIn("ran on another model at the base", out, "the reason it's not done, in words")
+        self.assertEqual(code, 1, "numbers from another model can't say whether this change can merge")
+
     def test_fewer_passing_tests_is_a_number_that_grew_the_wrong_way(self):
         self.write(**{"t.py": "print('Ran 12 tests in 0.1s')"}); self.git("commit", "-qam", "12 tests")
         self.write(**{"t.py": "print('Ran 10 tests in 0.1s')"})

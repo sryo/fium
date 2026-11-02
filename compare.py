@@ -196,6 +196,23 @@ def stale_row(run_path, repo):
     return {**row, "verdict": "stale"}
 
 
+def env_row(base, run):
+    # A run an agent made says which model and Claude Code made it: another model's numbers aren't this change's, and
+    # another CLI version is shown, since it updates itself often.
+    b, r = base.get("env") or {}, run.get("env") or {}
+    if not (b or r):
+        return None
+    say = lambda e: " ".join(str(e[k]) for k in ("model", "claude_code_version") if e.get(k)) or None
+    row = {"metric": "(env)", "base": say(b), "run": say(r)}
+    if not (b and r):
+        return {**row, "verdict": "unstamped"}
+    if b.get("model") != r.get("model"):
+        return {**row, "verdict": "not comparable"}
+    if b.get("claude_code_version") != r.get("claude_code_version"):
+        return {**row, "verdict": "changed"}
+    return None
+
+
 # Runs live outside the repo, in ~/.fium/runs/<repo>/, so no checkout tracks, cleans or loses them. Every clean,
 # stamped run a compare judges is kept there by commit, so a later compare names its base by rev from any cwd.
 RUNS = Path(os.environ.get("FIUM_HOME") or "~/.fium").expanduser() / "runs"
@@ -269,7 +286,8 @@ def compare_main(a):
     rows = price_compare(base, a.run, a.noise, (a.repo or ".") if base != a.base else None)
     keep_runs(a.repo or ".", base, a.run)
     stale = stale_row(a.run, a.repo or ".")
-    rows += [stale] if stale else []
+    env = env_row(json.load(open(base)), json.load(open(a.run)))
+    rows += [x for x in (stale, env) if x]
     if a.json:
         print(json.dumps(rows))
     else:
@@ -282,5 +300,7 @@ def compare_main(a):
                "only inert files (bench/inert) changed since the run, so its numbers stand" if stale["verdict"] == "carried" else
                "commit, then rerun the bench on HEAD (or list the changed files in bench/inert if no bench reads them)")
         print(f"  {stale['verdict']}: {fix}", file=sys.stderr)
-    sys.exit(1 if vs & {"worse", "limit", "missing", "stale"} else 3 if "inconclusive" in vs else 0)
+    if env and env["verdict"] == "not comparable" and not a.json:
+        print("  not comparable: measure the base again on the run's model", file=sys.stderr)
+    sys.exit(1 if vs & {"worse", "limit", "missing", "stale", "not comparable"} else 3 if "inconclusive" in vs else 0)
 

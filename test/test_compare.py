@@ -112,6 +112,18 @@ class Compare(unittest.TestCase):
         (self.d / "bench").mkdir(); self.write("bench/noise.json", {}, rel={"t": 0.2})
         self.assertEqual(self.compare(b, r)[1]["t"]["verdict"], "same", "bench/noise.json is the project's measured noise")
 
+    def test_runs_from_another_model_are_not_comparable_and_another_cli_is_flagged(self):
+        b = self.write("b.json", {"t": metric([100] * 6)}, env={"model": "claude-opus-5-5", "claude_code_version": "2.1.300"})
+        r = self.write("r.json", {"t": metric([100] * 6)}, env={"model": "claude-sonnet-5-5", "claude_code_version": "2.1.300"})
+        code, v = self.compare(b, r)
+        self.assertEqual((code, v["(env)"]["verdict"]), (1, "not comparable"), "another model's numbers say nothing about this change")
+        r = self.write("r.json", {"t": metric([100] * 6)}, env={"model": "claude-opus-5-5", "claude_code_version": "2.1.309"})
+        code, v = self.compare(b, r)
+        self.assertEqual((code, v["(env)"]["verdict"]), (0, "changed"), "the CLI updates itself often; shown, not blocking")
+        r = self.write("r.json", {"t": metric([100] * 6)})
+        self.assertEqual(self.compare(b, r)[1]["(env)"]["verdict"], "unstamped")
+        self.assertNotIn("(env)", self.compare(r, r)[1], "a bench no agent runs has no env to judge")
+
     def test_limit_is_never_crossed(self):
         b = self.write("b.json", {"bytes": metric([900], kind="bytes")}, limits={"bytes": 1000})
         r = self.write("r.json", {"bytes": metric([1100], kind="bytes")})

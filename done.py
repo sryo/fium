@@ -4,7 +4,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from check import git
-from compare import DEFAULT_REL, cap_for, change, judge, noise_file, parse_caps, runs_dir
+from compare import DEFAULT_REL, cap_for, change, env_row, judge, noise_file, parse_caps, runs_dir
 
 
 def how_we_know(goals):
@@ -48,6 +48,7 @@ def measure(raw, name):
     last = lines[-1].strip() if lines else ""
     if "run" in raw:
         out["metrics"], out["limits"] = dict(raw["run"].get("metrics", {})), raw["run"].get("limits", {})
+        out["env"] = raw["run"].get("env")
     elif re.match(r"-?\d+(\.\d+)?(\s|$)", last) and not re.match(r"\d+ passed", last):
         # Its kind, for the row's cap, comes from the row's words: bytes, time, tokens, else a count.
         kind = next((k for k, w in (("bytes", r"bytes|\bKB\b|\bMB\b"), ("time", r"\bms\b|seconds|\btime\b"), ("tokens", r"tokens"))
@@ -137,7 +138,7 @@ def done_main(a):
         for name in {**base[c]["metrics"], **here[c]["metrics"]}:
             owner[(c, name)] = ([i for i in users if names(name, rows[i]["where"])] or
                                 [i for i in users if names(name, rows[i]["text"])] or users)[0]
-    blocked, hard, grew, pending, unmeasured = [], [], [], [], []
+    blocked, hard, grew, pending, unmeasured, other_model = [], [], [], [], [], []
     for r in rows:
         if r["goal"] != shown:
             print(titles.get(r["goal"], f"Goal {r['goal']}"))
@@ -161,6 +162,11 @@ def done_main(a):
         state = ("ok" if b["ok"] else "ok now, failed at the base") if h["ok"] else "fails" + ("" if b["ok"] else " (failed at the base too)")
         if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
             print(f"       `{short(c)}`: {state}, {b['s']:g}s -> {h['s']:g}s")
+            env = env_row(b, h)
+            if env:
+                print(f"     {env['verdict']:>9}  model: {change(env['base'], env['run'])}")
+            if env and env["verdict"] == "not comparable":
+                other_model.append(short(c))
             if b["ok"] and not h["ok"]:
                 blocked.append(c)
             elif not b["ok"]:
@@ -198,6 +204,8 @@ def done_main(a):
     blocked, hard, grew = (list(dict.fromkeys(x)) for x in (blocked, hard, grew))
     if blocked:
         print(f"Not done: {', '.join(blocked)} broke or crossed a limit. Fix it.")
+    if other_model:
+        print(f"Not done: {', '.join(other_model)} ran on another model at the base. Measure both on the same model.")
     if hard:
         print(f"Not done: {', '.join(hard)} (hard) grew. Make it the same or better, or agree with the user it can't be without lowering quality.")
     if grew:
@@ -206,7 +214,7 @@ def done_main(a):
         print(f"Not measured yet: {', '.join(dict.fromkeys(pending))} (costly). It isn't done until they run, or the user says they needn't.")
     if unmeasured:
         print(f"Couldn't measure: {', '.join(unmeasured)}. It isn't done until they run clean, or the user says they needn't.")
-    if blocked or hard:
+    if blocked or hard or other_model:
         sys.exit(1)
     if grew or pending or unmeasured:
         sys.exit(3)
