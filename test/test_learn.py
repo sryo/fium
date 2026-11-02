@@ -1,4 +1,4 @@
-import json, os, shutil, subprocess, sys, tempfile, unittest
+import json, os, re, shutil, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 FIUM = Path(__file__).resolve().parent.parent / "fium"
@@ -186,6 +186,18 @@ class Learn(unittest.TestCase):
         click = next(c for c in json.loads(Path(self.tmp, "d.json").read_text())["all"] if c["kind"] == "error")
         self.assertEqual(click["next"], {"osascript": 1, "activate_tab": 1})
         self.assertIn("tools", self.learn("--help"))
+
+    def test_help_defines_every_config_key_and_flag(self):
+        out = self.learn("--help")
+        self.assertNotIn("see RULES.md", out, "RULES.md doesn't define learn.json's keys; the help must")
+        keys = set(re.findall(r'CFG(?:\.get\(|\[)"(\w+)"', Path(FIUM.parent, "learn.py").read_text()))
+        for k in keys:
+            self.assertRegex(out, rf"(?m)^  {k}\s+\S", f"{k} is read from bench/learn.json but the help doesn't say what it is")
+        sys.path.insert(0, str(FIUM.parent)); import learn
+        for name, sub in next(a for a in learn.parser()._actions if a.choices).choices.items():
+            for a in sub._actions:
+                if a.dest != "help":
+                    self.assertTrue(a.help, f"fium learn {name} {a.option_strings or a.dest} has no help")
 
     def test_mine_reads_a_json_result_by_its_own_error(self):
         self.write(os.path.join(self.src, "S1.jsonl"), [

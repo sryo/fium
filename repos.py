@@ -67,7 +67,7 @@ def new(name):
             dst.write_text(src.read_text().replace("NAME", root.name))
     (root / "CLAUDE.md").symlink_to("AGENTS.md")
     git(root, "init", "-q")
-    print(f"{root}: write GOALS.md first, then the README (SKILL.md)")
+    print(f"{root}: write GOALS.md first, then the README (SKILL.md). Its Caps: line is the template's default; ask the user how firm each kind of number is (K6)")
 
 
 

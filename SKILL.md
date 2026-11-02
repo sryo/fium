@@ -7,25 +7,26 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 
 ## Start a new project
 1. Ask only what you can't infer: who it's for, the job it does, and what it has to beat. Name it in plain lowercase.
-2. `cd ~/Documents && fium/fium new <name>` makes the repo from the templates.
+2. `cd ~/Documents && fium new <name>` makes the repo from the templates.
 3. Write GOALS.md first:
    - purpose
    - never traded
    - goals in priority order
    - How we know, with a metric, where it's measured and what `fium done` runs for each goal
+   - `Caps:`, which only the user sets (K6)
    - non-goals
 
    Then the README: why you'd want it and how you use it (R).
 4. Before the first feature, set up `bench/` with a baseline in the run format (K2), so `fium done` can measure every later change.
 5. A UI repo can add DESIGN.md (templates/DESIGN.md, D1); figma-cdp reads it as the source.
-6. Run `~/Documents/fium/fium check .` until it's clean. Commit with no attribution lines (C1).
+6. Run `fium check .` until it's clean. Commit with no attribution lines (C1).
 
 ## Bring an existing project in
 1. Run `fium check <repo>` and fix the errors one commit at a time. These are moves and docs only, with no behaviour changes:
    - CLAUDE.md → symlink
    - write GOALS.md from what AGENTS.md and the code already say
    - trim the README to why and how
-2. If it has a bench, make it write the run format (K2). If it has none, add the cheapest one that measures its top goal. Give GOALS.md's How we know a Run cell per row (G2), and say in AGENTS.md that a change is done when `fium done` says so (K4).
+2. If it has a bench, make it write the run format (K2). If it has none, add the cheapest one that measures its top goal. Give GOALS.md's How we know a Run cell per row (G2), and say in AGENTS.md that a change is done when `fium done` says so (K4). `bench/` may hold `checks` (F8), `inert` (K3), `judge` (K5), `affects.json` (L6), `noise.json` (K2), `readme-cli` (R6) and `learn.json` (S).
 3. Leave renames that would break suites (tests/ → test/) for the user to decide.
 
 ## Build a change (W)
@@ -43,7 +44,7 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 To improve a project's numbers unattended (try, measure, keep or revert, repeat), read `loop.md` beside this file and follow it.
 
 ## Learn from past sessions (S)
-After a working day or a live run, mine what agents actually did. `fium learn mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/learn.json` adds sources, hint tables and gates (`fium learn --help`). `keep` keeps each fix as a lesson `replay` checks. Fix the top clusters test-first, so each fix lands as a check (S2), placed where the failure happens (S3).
+After a working day or a live run, mine what agents actually did. `fium learn mine`, then `digest`, reads the project's transcripts, plus what `learn.json` adds (`fium learn --help`). `keep` keeps each fix as a lesson `replay` checks; `check` gates a fix. Fix the top clusters test-first, so each fix lands as a check (S2), placed where the failure happens (S3).
 
 ## Across repos
 For one goal across several repos (`/fium across <goal>`), read `across.md` beside this file and follow it. Even in one repo, `fium grep <name>` finds a name's users in every repo before you rename or remove it, and `fium status` shows each repo's branches.

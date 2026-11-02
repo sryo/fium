@@ -6,7 +6,14 @@ Config: <repo>/bench/learn.json. State and signals: $FIUM_HOME (~/.fium)/learn/<
   projects   ~/.claude/projects dirs to mine, by name substring (default: the repo's name)
   tools      regex over tool names: mine only matching calls and the corrections that follow them,
              for a tool other projects call (e.g. "^mcp__perch__"); each error still names the next call
-  journals, hints, hint_consts, known, lessons, gates: see RULES.md S; live_gate + baseline judge check --candidate
+  journals   jsonl logs a helper writes ({ts, rid, tool, ok, error, hint}), mined beside the transcripts
+  hints      Python helpers whose HINTS list of (error regex, fix) answers each error; hint lessons are checked against every one
+  hint_consts  JS files whose `const X_HINT = "..."` messages count as hints too
+  known      json/jsonl files or folders of {signature, status} rows; a closed case isn't flagged again
+  lessons    where keep writes and replay reads lessons (default: bench/lessons.jsonl)
+  gates      commands check runs before a fix lands, then replay
+  live_gate  the command check --candidate judges the run with (default: fium compare), against
+  baseline   the run it is judged against (default: bench/baseline.json)
 """
 import argparse, ast, datetime, difflib, json, os, random, re, subprocess, sys
 
@@ -545,24 +552,42 @@ def cmd_check(a):
         print("every gate passed")
 
 
-def main():
+def parser():
     ap = argparse.ArgumentParser(prog="fium learn", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", help="the project (default: the current directory's git toplevel)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("mine")
-    p.add_argument("--since"); p.add_argument("--all", action="store_true")
-    p.add_argument("--source", action="append"); p.add_argument("--out")
-    p = sub.add_parser("digest")
-    p.add_argument("signals", nargs="?"); p.add_argument("--top", type=int, default=12); p.add_argument("--explore", type=int, default=3)
-    p.add_argument("--seed", type=int, default=0); p.add_argument("--json"); p.add_argument("--mark", action="store_true")
-    p.add_argument("--stale", action="store_true"); p.add_argument("--source", action="append")
-    p = sub.add_parser("keep")
-    p.add_argument("--id", required=True); p.add_argument("--kind", required=True); p.add_argument("--expect", required=True)
-    for k in ("--error", "--file", "--signature", "--evidence"):
-        p.add_argument(k)
-    sub.add_parser("replay")
-    p = sub.add_parser("check")
-    p.add_argument("--candidate"); p.add_argument("--baseline"); p.add_argument("--dry-run", action="store_true")
+    p = sub.add_parser("mine", help="read transcripts and journals into today's signals: errors, retries, stalls, heavy reads, corrections")
+    p.add_argument("--since", help="a date or ISO time to mine from (default: the last digest --mark, else 14 days)")
+    p.add_argument("--all", action="store_true", help="mine everything, however old")
+    p.add_argument("--source", action="append", help="a folder of .jsonl to mine instead of the configured ones; repeatable")
+    p.add_argument("--out", help="where to write the signals (default: today's under the state folder)")
+    p = sub.add_parser("digest", help="cluster the signals and rank what to fix first")
+    p.add_argument("signals", nargs="?", help="a signals file (default: today's)")
+    p.add_argument("--top", type=int, default=12, help="clusters to pick by impact (default 12)")
+    p.add_argument("--explore", type=int, default=3, help="new clusters to pick at random beyond the top (default 3)")
+    p.add_argument("--seed", type=int, default=0, help="seed for the explore picks")
+    p.add_argument("--json", help="also write the picks and every cluster to this file")
+    p.add_argument("--mark", action="store_true", help="record now as the last run, where the next mine starts")
+    p.add_argument("--stale", action="store_true", help="list the hints and lessons that never fired, instead of clusters")
+    p.add_argument("--source", action="append", help="with --stale: transcript folders to search; repeatable")
+    p = sub.add_parser("keep", help="keep a fix that already landed as a lesson replay checks")
+    p.add_argument("--id", required=True, help="the lesson's unique name")
+    p.add_argument("--kind", required=True, help="hint: every helper must answer --error with a fix; doc: --file must match --expect")
+    p.add_argument("--expect", required=True, help="hint: text the fix contains; doc: a regex the file matches")
+    p.add_argument("--error", help="hint: the error line the helpers must answer")
+    p.add_argument("--file", help="doc: the file that keeps the rule")
+    p.add_argument("--signature", help="the digest signature this fixes, so a return shows as a relapse")
+    p.add_argument("--evidence", help="where the failure was seen: a session, a time")
+    sub.add_parser("replay", help="check every lesson still holds; exit 1 on one a change forgot")
+    p = sub.add_parser("check", help="run the gates and replay; exit 1 on the first that fails")
+    p.add_argument("--candidate", help="a run to judge against the baseline with live_gate too")
+    p.add_argument("--baseline", help="the run to judge it against (default: baseline in learn.json)")
+    p.add_argument("--dry-run", action="store_true", help="print the gates without running them")
+    return ap
+
+
+def main():
+    ap = parser()
     a = ap.parse_args()
     setup(a.repo)
     {"mine": cmd_mine, "digest": cmd_digest, "keep": cmd_keep, "replay": cmd_replay, "check": cmd_check}[a.cmd](a)

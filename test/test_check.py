@@ -371,6 +371,10 @@ class Check(unittest.TestCase):
         self.assertNotEqual(again.returncode, 0)
         self.assertIn("exists", again.stderr)
 
+    def test_new_project_leaves_the_caps_to_the_owner(self):
+        r = subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)
+        self.assertRegex(r.stdout, r"Caps:.*ask", "the template's Caps line is a default only the user may change (K6)")
+
 
 ROOT = FIUM.parent
 
@@ -397,6 +401,28 @@ class Docs(unittest.TestCase):
         cmds = re.search(r"\{(.+?)\}", out).group(1).split(",")
         for c in cmds:
             self.assertRegex(out, rf"(?m)^\s+{c}\s+\S", c)
+
+    def test_skill_docs_call_fium_the_way_install_puts_it(self):
+        install = re.search(r"^## Install\n(.*?)(?=^## )", (ROOT / "README.md").read_text(), re.M | re.S).group(1)
+        self.assertRegex(install, r"ln -sfn ~/Documents/fium/fium \S+/fium", "Install puts fium on PATH, so bare `fium` runs anywhere")
+        for doc in ("README.md", "SKILL.md", "loop.md", "across.md"):
+            calls = re.sub(r"(?m)^ln -sfn .*\n", "", (ROOT / doc).read_text())
+            self.assertNotIn("fium/fium", calls, f"{doc} calls fium by path; one spelling, the one Install sets up")
+
+    def test_readme_names_learning_and_the_skill_names_what_the_user_sets(self):
+        use = re.search(r"^## Use\n(.*)", (ROOT / "README.md").read_text(), re.M | re.S).group(1)
+        self.assertIn("learn", use, "learning from past sessions is a flow you'd ask for")
+        self.assertIn("Caps:", (ROOT / "SKILL.md").read_text(), "only the user writes how firm each number is (K6), so the agent must ask")
+
+    def test_skill_names_every_bench_file_and_learn_subcommand(self):
+        skill = (ROOT / "SKILL.md").read_text()
+        files = set(re.findall(r"`bench/([\w.-]+)`", (ROOT / "RULES.md").read_text())) | {"learn.json"}
+        for f in files:
+            self.assertRegex(skill, rf"`[^`]*\b{re.escape(f)}`", f"bench/{f} is set up per project, so the skill lists it")
+        sys.path.insert(0, str(ROOT)); import learn
+        subs = next(x for x in learn.parser()._actions if x.choices).choices
+        for s in subs:
+            self.assertRegex(skill, rf"`[^`]*\b{s}`", f"fium learn {s}")
 
 
 if __name__ == "__main__":
