@@ -322,6 +322,12 @@ class Learn(unittest.TestCase):
         self.assertIn("replay", out)
         self.assertNotIn("compare bench", out)
 
+    def test_check_judges_a_live_run_with_the_projects_own_gate(self):
+        self.config({"gates": [], "live_gate": ["python3", "tests/eval/gate.py"], "baseline": "tests/eval/baseline.json"})
+        out = self.learn("check", "--dry-run", "--candidate", "cand.json")
+        self.assertIn("$ python3 tests/eval/gate.py tests/eval/baseline.json cand.json", out)
+        self.assertNotIn("compare", out)
+
 
 if __name__ == "__main__":
     unittest.main()

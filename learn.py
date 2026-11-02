@@ -6,7 +6,7 @@ Config: <repo>/bench/learn.json. State and signals: $FIUM_HOME (~/.fium)/learn/<
   projects   ~/.claude/projects dirs to mine, by name substring (default: the repo's name)
   tools      regex over tool names: mine only matching calls and the corrections that follow them,
              for a tool other projects call (e.g. "^mcp__perch__"); each error still names the next call
-  journals, hints, hint_consts, known, lessons, gates: see RULES.md S
+  journals, hints, hint_consts, known, lessons, gates: see RULES.md S; live_gate + baseline judge check --candidate
 """
 import argparse, ast, datetime, difflib, json, os, random, re, subprocess, sys
 
@@ -536,7 +536,7 @@ def cmd_replay(a):
 def cmd_check(a):
     gates = CFG.get("gates", []) + [[sys.executable, os.path.abspath(__file__), "--repo", REPO, "replay"]]
     if a.candidate:
-        gates.append([sys.executable, FIUM, "compare", a.baseline or "bench/baseline.json", a.candidate])
+        gates.append(CFG.get("live_gate", [sys.executable, FIUM, "compare"]) + [a.baseline or CFG.get("baseline", "bench/baseline.json"), a.candidate])
     for g in gates:
         print("$ " + " ".join(g), flush=True)
         if not a.dry_run and subprocess.run(g, cwd=REPO).returncode:

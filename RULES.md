@@ -68,7 +68,7 @@ How a change goes from an idea to done.
 - **W4** Tell the user things in their words: a goal by its name, a rule by what it says, each number with what it measures and its before → after. Never a goal's number, a rule's id or a cap's digit.
 
 ## Learning (S)
-How a project learns from its own sessions, taken from figma-cdp's sleep loop.
+How a project learns from its own sessions (`fium learn`).
 - **S1** Learn from what agents actually did, not from what the docs imagine they do. Periodically read past transcripts for failed calls, retries, stalls, heavy reads and the user's corrections, and weight the corrections highest. Fix the top few, plus one or two rare ones.
 - **S2** Every fix lands as a check that would fail without it: a test, an error text the code must print, or a rule a doc must keep. That way a later trim or rewrite can't silently forget it.
 - **S3** Put the fix where the agent is when it fails. An error message that names the fix beats a line in a doc. An error or empty state a user sees says what happened and what to do next. When a failure comes back after its fix, move the fix closer to that point.
