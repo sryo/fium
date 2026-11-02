@@ -7,6 +7,7 @@
 - `AGENTS.md`: build, test
 - `SKILL.md`: the skill
 - `across.md`: the skill's /fium across
+- `loop.md`: the skill's unattended loop
 - `fium`: CLI entry
 - `check.py`: check
 - `compare.py`: compare, noise, affects

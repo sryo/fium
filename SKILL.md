@@ -39,6 +39,9 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 3. Exit 1: not done. Fix what broke; a hard cap that grew needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: a semi-hard cap grew past its margin, so simplify it first, then show the user the numbers and ask whether it passes. "Couldn't measure" (a command failed at the base or both sides) keeps it open too: make it run clean, or the user says it needn't. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K4). Tell it under each goal's name, as `fium done` prints it (W4).
 4. `fium compare <base-run> <run>` judges two runs directly. A stale verdict means the run measured another commit or a dirty tree (K1, K3).
 
+## Loop
+To improve a project's numbers unattended (try, measure, keep or revert, repeat), read `loop.md` beside this file and follow it.
+
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. `fium learn mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/learn.json` adds sources, hint tables and gates (`fium learn --help`). `keep` keeps each fix as a lesson `replay` checks. Fix the top clusters test-first, so each fix lands as a check (S2), placed where the failure happens (S3).
 
