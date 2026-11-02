@@ -170,12 +170,16 @@ def changed_since(repo, rev):
     return git(repo, "diff", "--name-only", rev, "HEAD").stdout.split()
 
 
+def globs(repo, name, defaults):
+    # bench/<name>: a glob per line, # comments; a !defaults line drops the defaults. The file itself always matches.
+    p = Path(repo) / "bench" / name
+    lines = [l.strip() for l in p.read_text().splitlines() if l.strip() and not l.startswith("#")] if p.exists() else []
+    return [f"bench/{name}"] + [l for l in lines if l != "!defaults"] + ([] if "!defaults" in lines else defaults)
+
+
 def inert_globs(repo):
     # Agent-facing docs (SKILL.md, references/) change what a run measures, so they are never inert by default.
-    p = Path(repo) / "bench" / "inert"
-    lines = [l.strip() for l in p.read_text().splitlines() if l.strip() and not l.startswith("#")] if p.exists() else []
-    # bench/inert itself is always inert: editing the list can't change what a run measured.
-    return ["bench/inert"] + [l for l in lines if l != "!defaults"] + ([] if "!defaults" in lines else INERT)
+    return globs(repo, "inert", INERT)
 
 
 def stale_row(run_path, repo):

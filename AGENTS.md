@@ -11,6 +11,7 @@
 - `check.py`: check
 - `compare.py`: compare, noise, affects
 - `done.py`: done
+- `tries.py`: try
 - `repos.py`: survey, status, grep, new
 - `learn.py`: learn
 - `templates/`: what new copies

@@ -9,6 +9,7 @@ from check import check, own_checks  # noqa: E402
 from compare import DEFAULT_REL, compare_main, noise, affects_main  # noqa: E402
 from done import done_main  # noqa: E402
 from repos import grep_main, new, status_main, survey_main  # noqa: E402
+from tries import STATUSES, try_main  # noqa: E402
 
 
 def main():
@@ -39,6 +40,10 @@ def main():
     ns.add_argument("--min", type=float, default=DEFAULT_REL, help="the least rel any metric gets (default 0.10)")
     ns.add_argument("--abs", action="append", default=[], metavar="METRIC=AMOUNT",
                     help="a move this small is same; METRIC may be a glob, a later one wins")
+    tr = sub.add_parser("try", help="every attempt at the project's numbers, kept or dropped, and why")
+    tr.add_argument("idea", nargs="?", help="what this attempt tries, in one line")
+    tr.add_argument("--record", choices=STATUSES, help="log HEAD as this attempt with this outcome, without measuring")
+    tr.add_argument("--reason", help="why it was kept or dropped: the numbers that moved")
     sub.add_parser("learn", help="mine past sessions for failures and keep each fix as a lesson (fium learn --help)")
     sub.add_parser("new", help="start a project from the templates").add_argument("name")
     sc = sub.add_parser("affects", help="which bench tasks a change can move")
@@ -63,6 +68,8 @@ def main():
         return affects_main(a)
     if a.cmd == "done":
         return done_main(a)
+    if a.cmd == "try":
+        return try_main(a)
     if a.cmd == "compare":
         return compare_main(a)
     if a.cmd == "noise":
