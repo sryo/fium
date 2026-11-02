@@ -20,7 +20,7 @@ GOALS = """# demo: goals
 | 1 | answer time | `m.py` | `python3 m.py` |
 | 2 | tests pass | `t.py` | `python3 t.py` |
 | 3 | screens checked | by eye | by hand |
-| 4 | data size | `du` | live: `python3 -c "print(6*7)"` |
+| 4 | data size | `du` | live: `cat d.txt` |
 | 5 | tokens per task | eval | costly: `python3 e.py` |
 | 6 | log lines | `l.py` | `python3 l.py \\| cat` |
 | 7 | rules; size | `r.py` rules | `python3 r.py` |
@@ -42,7 +42,8 @@ class Done(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
         self.git("init", "-q", "-b", "main"); self.git("config", "user.email", "a@b"); self.git("config", "user.name", "a")
-        self.write(**{"GOALS.md": GOALS, "m.py": "print(5)", "t.py": "pass", "e.py": "print(100)", "l.py": "print(100)", "r.py": R})
+        self.write(**{"GOALS.md": GOALS, "m.py": "print(5)", "t.py": "pass", "e.py": "print(100)", "l.py": "print(100)", "r.py": R,
+                      ".gitignore": "d.txt\n", "d.txt": "42\n"})
         self.git("add", "."); self.git("commit", "-q", "-m", "base")
 
     def tearDown(self):
@@ -74,6 +75,7 @@ class Done(unittest.TestCase):
         self.assertEqual(self.git("worktree", "list").count("\n"), 1, "the base's worktree is gone")
 
     def test_each_cap_level_does_what_the_user_designed(self):
+        self.done("--start")
         # Hard: not done until the same or better. Semi-hard: within its margin it passes, past it the user chooses.
         # Soft: no limit.
         caps = "Caps: `n2 log*=1 answer*=2`"
@@ -148,10 +150,48 @@ class Done(unittest.TestCase):
 
     def test_a_row_sharing_a_command_says_so_and_a_live_row_shows_what_it_printed(self):
         self.write(**{"GOALS.md": GOALS.replace("| 5 | tokens per task |", "| 2 | tests again | t.py | `python3 t.py` |\n| 5 | tokens per task |")
-                      .replace('live: `python3 -c "print(6*7)"`', 'live: `python3 -c "print(\'up: none yet\')"`')})
+                      .replace('live: `cat d.txt`', 'live: `python3 -c "print(\'up: none yet\')"`')})
         out = self.done()[1]
         self.assertIn("`python3 t.py`: ok, as above", out)
         self.assertIn("up: none yet", out)
+
+    def test_a_live_row_with_no_number_leaves_the_change_open(self):
+        # A live row is the project's only reading of what it measures; printing no number is not a measurement.
+        self.done("--start")
+        code, out = self.done("--costly")
+        self.assertEqual(code, 0, out)
+        for printed, why in [("print('up: none yet')", "printed no number"), ("raise SystemExit(1)", "fails")]:
+            self.write(**{"GOALS.md": GOALS.replace('live: `cat d.txt`', f'live: `python3 -c "{printed}"`')})
+            code, out = self.done("--costly")
+            self.assertEqual(code, 3, out)
+            self.assertIn(f"Couldn't measure: data size (live: {why})", out)
+
+    def test_a_live_row_is_held_to_the_before_read_when_the_plan_was_frozen(self):
+        # Live state has no base commit to read it at, so its before is read once, when the plan is frozen.
+        code, out = self.done("--costly")
+        self.assertEqual(code, 3, out)
+        self.assertIn("Couldn't measure: data size (live: no before)", out)
+        self.assertIn("fium done --start", out, "says how to get a before")
+        code, out = self.done("--start")
+        self.assertEqual(code, 0, out)
+        self.assertIn("data size: 42", out, "shows what it read")
+        code, out = self.done("--start")
+        self.assertEqual(code, 1, "a before is read once; reading it again would move it past the change")
+        code, out = self.done("--costly")
+        self.assertEqual(code, 0, out)
+        self.assertIn("same  data size: 42", out)
+        self.write(**{"d.txt": "50\n"})
+        code, out = self.done("--costly")
+        self.assertIn("data size: 42 -> 50 (+8, +19%)", out, "now held to the before, like any row")
+        self.assertEqual(code, 3, out)
+
+    def test_a_live_before_that_read_no_number_measures_nothing(self):
+        self.write(**{"d.txt": "none yet\n"})
+        self.done("--start")
+        self.write(**{"d.txt": "42\n"})
+        code, out = self.done("--costly")
+        self.assertEqual(code, 3, out)
+        self.assertIn("data size (live: no before)", out)
 
     def test_a_cached_base_is_read_again_by_todays_rules_and_a_new_metric_shows(self):
         self.done()
@@ -247,6 +287,7 @@ class Done(unittest.TestCase):
         self.assertIn("same  answer time: 5", out)
 
     def test_uncommitted_work_on_main_is_measured_against_head(self):
+        self.done("--start")
         self.write(**{"m.py": "print(4)"})
         code, out = self.done("--costly")
         self.assertIn("5 -> 4 (-1, -20%)", out)
@@ -260,6 +301,7 @@ class Done(unittest.TestCase):
         self.assertEqual(code, 1)
 
     def test_costly_rows_run_only_when_asked_and_are_compared(self):
+        self.done("--start")
         self.write(**{"e.py": "print(80)"})
         code, out = self.done("--costly")
         self.assertIn("100 -> 80 (-20, -20%)", out)

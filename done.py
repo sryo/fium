@@ -94,6 +94,31 @@ def at_base(repo, sha, cmds, fresh=()):
     return have
 
 
+def live_before(repo, sha):
+    # Live state has no commit to read it at, so a change's before for its live rows is read once, when the plan is
+    # frozen (K4), and kept beside the base's cache.
+    f = runs_dir(repo) / f"done-{sha}.live.json"
+    return f, (json.loads(f.read_text()) if f.exists() else {})
+
+
+def start(repo, sha, print=print):
+    goals = (repo / "GOALS.md").read_text() if (repo / "GOALS.md").exists() else ""
+    rows = [r for r in how_we_know(goals) if r["kind"] == "live"]
+    f, have = live_before(repo, sha)
+    if have:
+        print(f"fium done --start: this change's before was read at {have['at']}; delete {f} to read it again")
+        return 1
+    raw = {r["cmd"]: execute(r["cmd"], repo) for r in rows}
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "raw": raw}))
+    print(f"fium done --start: before of {len(rows)} live rows, against {sha[:7]}")
+    for r in rows:
+        m = measure(raw[r["cmd"]], r["metric"])
+        got = m["metrics"].get(r["metric"])
+        print(f"  {r['metric']}: " + (f"{got['samples'][0]:g}" if got else m.get("last") or "no output"))
+    return 0
+
+
 def named(name, text):
     return bool(re.search(r"(?<![\w.])" + re.escape(name) + r"(?!\w)", text, re.I))
 
@@ -116,6 +141,8 @@ def base_branch(repo, base=None):
 def done_main(a):
     repo = Path(git(".", "rev-parse", "--show-toplevel").stdout.strip() or ".").resolve()
     branch = base_branch(repo, a.base)
+    if a.start:
+        sys.exit(start(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip()))
     res = done(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip(), branch, a.costly)
     if res["blocked"] or res["hard"] or res["other_model"]:
         sys.exit(1)
@@ -129,12 +156,18 @@ def done(repo, sha, branch, costly=False, print=print):
     goals = (repo / "GOALS.md").read_text() if (repo / "GOALS.md").exists() else ""
     rows = how_we_know(goals)
     dirty = bool(git(repo, "status", "--porcelain").stdout.strip())
-    cmds = list(dict.fromkeys(r["cmd"] for r in rows if r["cmd"] and (not r["kind"] or r["kind"] == "costly" and costly)))
     label = {}
     for r in rows:
         label.setdefault(r["cmd"], r["metric"])
+    # A live row whose before was read (start) is held to it like any row.
+    read = {c: x for c, x in live_before(repo, sha)[1].get("raw", {}).items() if c in label and measure(x, label[c])["metrics"]}
+    for r in rows:
+        if r["kind"] == "live" and r["cmd"] in read:
+            r["kind"] = None
+    cmds = list(dict.fromkeys(r["cmd"] for r in rows if r["cmd"] and (not r["kind"] or r["kind"] == "costly" and costly)))
     costly = {r["cmd"] for r in rows if r["kind"] == "costly"}
-    base = {c: measure(raw, label[c]) for c, raw in at_base(repo, sha, cmds, costly).items() if c in cmds}
+    have = {**at_base(repo, sha, [c for c in cmds if c not in read], costly), **read}
+    base = {c: measure(raw, label[c]) for c, raw in have.items() if c in cmds}
     raw = {c: execute(c, repo) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
     here = {c: measure(x, label[c]) for c, x in raw.items()}
     caps = parse_caps(goals)
@@ -167,6 +200,8 @@ def done(repo, sha, branch, costly=False, print=print):
             got = here[c]["metrics"].get(label[c])
             print(f"       live `{short(c)}`: " + (f"{got['samples'][0]:g} now" if got else ("" if here[c]["ok"] else "fails, ")
                                                      + (here[c].get("last") or "no output")))
+            # Live state is the row's only reading, so a row that read no number measured nothing.
+            unmeasured.append(f"{r['metric']} (live: {'no before' if got else 'printed no number' if here[c]['ok'] else 'fails'})")
             continue
         if c not in here:
             print(f"       costly `{short(c)}`: not run; state its cost, then fium done --costly")
@@ -231,5 +266,7 @@ def done(repo, sha, branch, costly=False, print=print):
         print(f"Not measured yet: {', '.join(dict.fromkeys(pending))} (costly). It isn't done until they run, or the user says they needn't.")
     if unmeasured:
         print(f"Couldn't measure: {', '.join(unmeasured)}. It isn't done until they run clean, or the user says they needn't.")
+        if any(u.endswith("(live: no before)") for u in unmeasured):
+            print("A live row's before is read once, when the plan is frozen: fium done --start.")
     return {"blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured,
             "other_model": other_model, "failed": failed, "verdicts": verdicts, "raw": {c: raw[c] for c in costly & set(cmds)}}

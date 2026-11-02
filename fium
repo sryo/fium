@@ -35,6 +35,7 @@ def main():
                         epilog="exit 0: merge; 1: something broke or crossed a limit; 3: something grew, the user decides")
     dn.add_argument("--base", help="branch it merges into (default: main, else master)")
     dn.add_argument("--costly", action="store_true", help="also run the costly: rows (agent evals), at the base and here")
+    dn.add_argument("--start", action="store_true", help="read the live: rows now as this change's before; run it when the plan is frozen")
     ns = sub.add_parser("noise", help="write noise.json for compare --noise from an A/A run, to stdout")
     ns.add_argument("base"); ns.add_argument("run")
     ns.add_argument("--min", type=float, default=DEFAULT_REL, help="the least rel any metric gets (default 0.10)")

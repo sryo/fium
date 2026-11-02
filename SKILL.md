@@ -30,7 +30,7 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 
 ## Build a change (W)
 1. Read GOALS.md and the code it touches, then reply once with the plan and the questions (W1).
-2. On yes: tests first and red, code to green, one real run, `fium done`.
+2. On yes: `fium done --start` (the live rows' before), tests first and red, code to green, one real run, `fium done`.
 3. Report each R, the run and the numbers in the user's words (W4). Push only on the user's OK.
 
 ## Judge a change
