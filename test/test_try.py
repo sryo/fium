@@ -101,7 +101,7 @@ class Keep(Repo):
     def setUp(self):
         super().setUp()
         self.commit("bench", **{"GOALS.md": GOALS, "r.py": BENCH, "tool.py": "a\nb\nc\n", "calls.txt": "10", "ms.txt": "[100, 100, 100]",
-                                "README.md": "why\nhow\nmore\n"})
+                                "README.md": "why\nhow\nmore\n", ".gitignore": "run.json\n"})
         self.git("checkout", "-q", "-b", "loop")
         self.fium("baseline", "--record", "keep")
 
@@ -131,8 +131,8 @@ class Keep(Repo):
     def test_cutting_what_nothing_measures_is_parked_not_kept(self):
         code, last, out = self.attempt("trim the readme", **{"README.md": "why\nhow\n"})
         self.assertEqual(last, "park", "nothing measured read it, so nothing says the cut is safe")
-        code, last, out = self.attempt("trim the readme and time looks better", **{"README.md": "why\n", "ms.txt": "[100, 140, 80, 120, 90, 110]"})
-        self.assertEqual(last, "park", "a number too close to call that moved the right way doesn't need a retest")
+        code, last, out = self.attempt("shorter words", **{"README.md": "y\n"})
+        self.assertEqual(last, "park", "a shorter line is a cut too: bytes, not lines")
 
     def test_a_command_that_now_fails_is_a_crash(self):
         code, last, out = self.attempt("break it", **{"calls.txt": "ten"})

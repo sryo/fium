@@ -93,8 +93,8 @@ def attempt(repo, rows, a):
     head = git(repo, "rev-parse", "HEAD").stdout.strip()
     if head == base:
         sys.exit("HEAD is the last keep: commit the attempt first.")
-    lines = [l.split("\t")[:2] for l in git(repo, "diff", "--numstat", base, "HEAD").stdout.splitlines()]
-    cut = sum(int(d) - int(i) for i, d in lines if i.isdigit() and d.isdigit()) > 0
+    size = lambda rev, f: int(git(repo, "cat-file", "-s", f"{rev}:{f}").stdout.strip() or 0)
+    cut = sum(size("HEAD", f) - size(base, f) for f in git(repo, "diff", "--name-only", base, "HEAD").stdout.split()) < 0
     res = done(repo, base, branch, a.costly)
     status, reason = outcome(res, a.target, cut)
     if status == "keep" and anchor != base:
