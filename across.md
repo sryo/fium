@@ -9,11 +9,11 @@ One change, or one goal, that spans several repos under `~/Documents`. You manag
 ## 2. Plan outside the repos
 - Write `~/.fium/campaigns/<name>.md` with one row per change: the repo, the change, and the failing test that proves it. No plan file goes in any repo.
 - Within a repo, the failing tests are the spec. Write a spec only for a contract between repos, meaning an interface, its old and new behaviour, and the order changes land in. That contract also lives in the note.
-- List the decisions only the user can make: deletions, API shape, memory edits, whether a change is done (K4). Ask them before the work reaches each one.
+- List the decisions only the user can make: deletions, API shape, memory edits, whether a change is done (K3). Ask them before the work reaches each one.
 
 ## 3. One session per repo
 - Each session gets a brief with the goal, the files it owns, and what done means: the `## Test` command passes at a named commit. It cuts its own branch from the base. Never put two sessions on one repo at once.
-- Sessions stage the paths they mean to commit, never `git add -A`. They commit with no attribution (C1), and they never push or merge.
+- Sessions stage the paths they mean to commit, never `git add -A`. They commit in the repo's style, with no attribution (C1), and they never push or merge.
 - Keep `~/.fium/campaigns/<name>.json` up to date as `{"repos": {repo: [branch, ...]}}`.
 
 ## 4. Impact, before any merge
@@ -22,12 +22,12 @@ One change, or one goal, that spans several repos under `~/Documents`. You manag
 
 ## 5. Land
 - Run `fium status --campaign <name>`. It reruns every branch's `## Test` command at the branch tip, so you don't have to trust a session's own report.
-- Merge only after the user says yes (C2 covers the push). Run the tests on the merged base, and undo that merge if they fail.
+- Merge only after the user says yes (push only on their word too). Run the tests on the merged base, and undo that merge if they fail.
 
 ## 6. Audit after merging
 - Run `fium check --all`. For each name the change removed, run `fium grep <name>`.
 - Run each repo's real entry point once (a CLI, a server, a headless agent run), because unit tests miss wiring.
-- Re-read every README the change touched (R, R6). Keep each one short: say what it is, how to install it, the few commands people type, and its gaps.
+- Re-read every README the change touched (R). Keep each one short: say what it is, how to install it, the few commands people type, and its gaps.
 
 ## 7. Tidy
 - `fium status --campaign <name>` prints the cleanup commands for the campaign's merged branches. Run them, then delete the campaign files and archive the sessions. Leave alone any branch the campaign didn't make.

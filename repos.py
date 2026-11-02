@@ -55,7 +55,7 @@ def survey_main(a):
 
 
 def new(name):
-    # The templates with NAME filled in, a git repo, and CLAUDE.md -> AGENTS.md (F1-F5). DESIGN.md is only for a UI (D1).
+    # The templates with NAME filled in, a git repo, and CLAUDE.md -> AGENTS.md (F1, F2). DESIGN.md is only for a UI.
     root = Path(name).resolve()
     if root.exists():
         sys.exit(f"fium new: {root} exists; pick another name or bring it in with fium check")
@@ -67,7 +67,7 @@ def new(name):
             dst.write_text(src.read_text().replace("NAME", root.name))
     (root / "CLAUDE.md").symlink_to("AGENTS.md")
     git(root, "init", "-q")
-    print(f"{root}: write GOALS.md first, then the README (SKILL.md). Its Caps: line is the template's default; ask the user how firm each kind of number is (K6)")
+    print(f"{root}: write GOALS.md first, then the README (SKILL.md). Its Caps: line is the template's default; ask the user how firm each kind of number is (K5)")
 
 
 
@@ -89,7 +89,7 @@ def worktrees(repo):
 
 
 def test_at(path):
-    # The first code block under AGENTS.md's ## Test (F7), run where the branch is checked out.
+    # The first code block under AGENTS.md's ## Test (F3), run where the branch is checked out.
     m = re.search(r"^## Test\n.*?```\w*\n(.*?)```", (Path(path) / "AGENTS.md").read_text(), re.M | re.S) \
         if (Path(path) / "AGENTS.md").exists() else None
     if not m:

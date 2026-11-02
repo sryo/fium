@@ -42,7 +42,7 @@ def execute(cmd, cwd):
 
 
 def measure(raw, name):
-    # A command's last line is either a run file (RULES.md K2), whose metrics count, or a number, named after its row.
+    # A command's last line is either a run file (RULES.md K1), whose metrics count, or a number, named after its row.
     out = {"ok": raw["code"] == 0, "s": raw["s"], "metrics": {}, "limits": {}}
     lines = raw["out"].strip().splitlines()
     last = lines[-1].strip() if lines else ""
@@ -96,7 +96,7 @@ def at_base(repo, sha, cmds, fresh=()):
 
 def live_before(repo, sha):
     # Live state has no commit to read it at, so a change's before for its live rows is read once, when the plan is
-    # frozen (K4), and kept beside the base's cache.
+    # frozen (K3), and kept beside the base's cache.
     f = runs_dir(repo) / f"done-{sha}.live.json"
     return f, (json.loads(f.read_text()) if f.exists() else {})
 

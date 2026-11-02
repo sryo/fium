@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """fium's own bench: what its rules cost an agent to read, how well they're checked, and how fast the checker runs.
-Writes a run in the price format (RULES.md K2). Usage: bench/run.py [--reps N] [--paired [REV]] [out.json]
+Writes a run in the price format (RULES.md K1). Usage: bench/run.py [--reps N] [--paired [REV]] [out.json]
 --paired also measures REV (default: bench/baseline.json's commit), timing both checkers alternately in this
 session so machine drift cancels out, and prints the base path, then the run path."""
 import argparse, json, os, re, subprocess, sys, tempfile, time
@@ -83,7 +83,7 @@ def main():
     ap.add_argument("--reps", type=int, default=7)
     ap.add_argument("--paired", nargs="?", const="baseline", metavar="REV")
     a = ap.parse_args()
-    # Stamp first, so the run names the code it measured (K2).
+    # Stamp first, so the run names the code it measured (K1).
     commit, dirty = git("rev-parse", "HEAD"), bool(git("status", "--porcelain"))
     limits = {"untested_checks": 0, "unnamed_rules": 0}
     runs = Path(os.environ.get("FIUM_HOME") or "~/.fium").expanduser() / "runs" / "fium"

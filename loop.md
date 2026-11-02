@@ -19,8 +19,8 @@ The user's yes covers every run inside that budget, so each run needn't state it
 
 ## 3. Each attempt
 1. `fium try`: read the past attempts, and why the ones that touched the same files were dropped.
-2. Make one change, predict its verdict (L5), commit.
-3. `fium try "<idea>"`, with `--target <metric>` when it adds. Add `--costly` only for the tasks `fium affects` names (L6).
+2. Make one change, predict its verdict (W1), commit.
+3. `fium try "<idea>"`, with `--target <metric>` when it adds. Add `--costly` only for the tasks `fium affects` names (L2).
 4. `confirm`: `fium try --confirm --costly`.
 5. `retest`: run it once more with more reps. Anything but `keep`: `git reset --hard` to the last keep.
 
@@ -34,4 +34,4 @@ The user's yes covers every run inside that budget, so each run needn't state it
 - Never inside the loop: write lessons, change `bench/judge`, refresh a baseline, push or merge.
 
 ## 6. Report
-`fium try`'s list and the branch name. The keeps wait on `loop/<date>` for `fium done` against the base and the user's word (K4). Say it in plain words (W4).
+`fium try`'s list and the branch name. The keeps wait on `loop/<date>` for `fium done` against the base and the user's word (K3). Say it in plain words (W4).

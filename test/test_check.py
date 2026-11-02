@@ -41,41 +41,6 @@ Run it.
 
 AGENTS = "# demo\n\n## Test\n```bash\nmake test\n```\nA change is done when `fium done` says so.\n"
 
-DESIGN = """---
-version: alpha
-name: demo
-colors:
-  primary: "#1A1C1E"  # ink
-typography:
-  body:
-    fontFamily: Public Sans
-    fontSize: 1rem
-rounded:
-  md: 8px
-components:
-  button:
-    backgroundColor: "{colors.primary}"
-    typography: "{typography.body}"
----
-
-## Overview
-Calm.
-
-## Colors
-Ink.
-
-```md
-## Overview
-```
-
-## Fonts
-Unknown sections are kept wherever they sit.
-
-## Shapes
-Soft.
-"""
-
-
 def make(root, **over):
     files = {"AGENTS.md": AGENTS, "README.md": README, "GOALS.md": GOALS, "LICENSE": "x\n"}
     files.update(over)
@@ -119,7 +84,7 @@ class Check(unittest.TestCase):
         make(self.root, **{"GOALS.md": None, "LICENSE": None, "README.md": None})
         code, f = check(self.root)
         self.assertEqual(code, 1)
-        self.assertTrue({"F3", "F4", "F5"} <= rules(f, "error"))
+        self.assertEqual({x["file"] for x in f if x["rule"] == "F1"}, {"GOALS.md", "LICENSE", "README.md"})
 
     def test_claude_must_be_symlink(self):
         make(self.root, **{"CLAUDE.md": "See [AGENTS.md](./AGENTS.md).\n"})
@@ -167,23 +132,25 @@ class Check(unittest.TestCase):
         plain = AGENTS.replace("A change is done when `fium done` says so.\n", "")
         (self.root / "AGENTS.md").write_text(plain)
         f = check(self.root)[1]
-        self.assertTrue(any(x["rule"] == "K4" and "fium done" in x["msg"] for x in f),
+        self.assertTrue(any(x["rule"] == "K3" and "fium done" in x["msg"] for x in f),
                         "a project with goals tells its agents how to know a change is done")
         (self.root / "AGENTS.md").write_text(plain + "\n## Bench\nRun `fium compare base.json run.json --since main` with `bench.mjs --house x`.\n")
         f = check(self.root)[1]
-        self.assertTrue(any(x["rule"] == "K4" and "--since" in x["msg"] for x in f), "the old way is named so it can go")
+        self.assertTrue(any(x["rule"] == "K3" and "--since" in x["msg"] for x in f), "the old way is named so it can go")
         (self.root / "AGENTS.md").write_text(plain + "\n## Bench\nA change is done when `fium done` says so.\n")
-        self.assertNotIn("K4", rules(check(self.root)[1]))
+        self.assertNotIn("K3", rules(check(self.root)[1]))
 
-    def test_readme_title_and_opener(self):
-        make(self.root, **{"README.md": "# /Demo\n\n`demo` is a thing.\n\n## Install\nx\n"})
+    def test_readme_opener_names_what_it_does(self):
+        make(self.root, **{"README.md": "# Demo\n\n`demo` is a thing.\n\n## Install\nx\n"})
         _, f = check(self.root)
-        self.assertTrue({"R1", "R2"} <= rules(f))
+        self.assertIn("R1", rules(f), "the opener starts with the plain name")
+        (self.root / "README.md").write_text(README.replace("# demo", "# Demo"))
+        self.assertNotIn("R1", rules(check(self.root)[1]), "a title in any case is just a title")
 
-    def test_readme_install_and_badges(self):
-        make(self.root, **{"README.md": "# demo\n\ndemo does X. ![b](https://img.shields.io/x)\n"})
+    def test_readme_without_install(self):
+        make(self.root, **{"README.md": "# demo\n\ndemo does X.\n"})
         _, f = check(self.root)
-        self.assertTrue({"R3", "R4"} <= rules(f))
+        self.assertIn("R2", rules(f, "error"))
 
     def test_a_fix_that_touches_no_test_warns(self):
         make(self.root)
@@ -217,7 +184,7 @@ class Check(unittest.TestCase):
         subprocess.run(["git", "init", "-q", str(self.root)])
         r = subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
         self.assertEqual(r.returncode, 1)
-        hits = [x for x in json.loads(r.stdout)["demo"] if x["rule"] == "F8"]
+        hits = [x for x in json.loads(r.stdout)["demo"] if x["rule"] == "F4"]
         self.assertEqual(len(hits), 1)
         self.assertIn("over budget", hits[0]["msg"])
         (self.root / "bench" / "checks").write_text("true\n")
@@ -232,8 +199,8 @@ class Check(unittest.TestCase):
     def test_a_missing_use_section_warns(self):
         make(self.root, **{"README.md": README.split("## Use")[0]})
         _, f = check(self.root)
-        self.assertIn("R3", rules(f, "warn"))
-        self.assertNotIn("R3", rules(f, "error"))
+        self.assertIn("R2", rules(f, "warn"))
+        self.assertNotIn("R2", rules(f, "error"))
 
     def test_a_logo_block_may_open_the_readme(self):
         logo = '<p align="center">\n  <picture>\n    <source srcset="d.svg">\n    <img src="l.svg" alt="demo">\n  </picture>\n</p>\n\n'
@@ -241,118 +208,23 @@ class Check(unittest.TestCase):
         for readme in (logo + README, logo + README.split("\n", 2)[2], "![demo](logo.png)\n\n" + README):
             (self.root / "README.md").write_text(readme)
             _, f = check(self.root)
-            self.assertFalse({"R1", "R2"} & rules(f), readme)
+            self.assertNotIn("R1", rules(f), readme)
         (self.root / "README.md").write_text(logo + "Some tagline.\n\n## Install\nx\n\n## Use\ny\n")
-        self.assertNotIn("R2", rules(check(self.root)[1]))
+        self.assertNotIn("R1", rules(check(self.root)[1]))
         (self.root / "README.md").write_text(logo.replace('alt="demo"', 'alt="Logo"') + "Some tagline.\n\n## Install\nx\n\n## Use\ny\n")
-        self.assertIn("R2", rules(check(self.root)[1]))
-
-    def test_slash_title_allowed(self):
-        make(self.root, **{"README.md": README.replace("# demo", "# /demo")})
-        _, f = check(self.root)
-        self.assertNotIn("R1", rules(f))
-
-    def test_readme_names_no_env_var_outside_code(self):
-        make(self.root, **{"README.md": README.replace("Run it.", "Set `DEMO_PORT` to move it.\n```bash\nDEMO_TOKEN=x demo\n```")})
-        code, f = check(self.root)
-        self.assertEqual(code, 1)
-        hits = [x for x in f if x["rule"] == "R6"]
-        self.assertEqual([x["level"] for x in hits], ["error"])
-        self.assertIn("DEMO_PORT", hits[0]["msg"])
-
-    def test_readme_use_commands_exist_in_the_cli(self):
-        cli = 'import argparse\nap = argparse.ArgumentParser()\nsub = ap.add_subparsers()\nc = sub.add_parser("check")\nc.add_argument("--all")\n'
-        use = "## Use\n```bash\n./demo check --all ~/x\n~/bin/demo serve --port=8\ndemo <path>\nother check --nope\n```\n"
-        make(self.root, **{"README.md": README.split("## Use")[0] + use, "demo": cli})
-        _, f = check(self.root)
-        hits = sorted(x["msg"] for x in f if x["rule"] == "R6")
-        self.assertEqual(len(hits), 1, hits)
-        self.assertIn("serve", hits[0]); self.assertIn("--port", hits[0]); self.assertNotIn("--nope", hits[0])
-        (self.root / "bench").mkdir()
-        (self.root / "bench" / "readme-cli").write_text("serve\n--port\n")
-        self.assertNotIn("R6", rules(check(self.root)[1]))
-
-    def test_shell_case_verbs_count_as_commands(self):
-        cli = '#!/bin/sh\ncase "$1" in\n  up) start ;;\n  "down") stop ;;\nesac\n'
-        make(self.root, **{"README.md": README.split("## Use")[0] + "## Use\n```bash\ndemo up\ndemo down\n```\n", "demo": cli})
-        self.assertNotIn("R6", rules(check(self.root)[1]))
-
-    def test_readme_prose_timings_and_source_paths_warn(self):
-        make(self.root, **{"README.md": README.replace("Run it.", "It answers in 40 ms. See Sources/Demo/main.swift and run.py.\n```\nsleep 5s\n```")})
-        code, f = check(self.root)
-        self.assertEqual(code, 0)
-        hits = [x for x in f if x["rule"] == "R6"]
-        self.assertEqual({x["level"] for x in hits}, {"warn"})
-        msg = " ".join(x["msg"] for x in hits)
-        for want in ("40 ms", "Sources/", "main.swift", "run.py"):
-            self.assertIn(want, msg)
-        self.assertNotIn("5s", msg)
+        self.assertIn("R1", rules(check(self.root)[1]))
 
     def test_build_and_internals_sections_warn(self):
         make(self.root, **{"README.md": README + "\n## Development\nnpm run build\n\n## Architecture\nx\n"})
         code, f = check(self.root)
         self.assertEqual(code, 0)
-        self.assertIn("R5", rules(f, "warn"))
-
-    def test_agent_docs_have_no_imports(self):
-        make(self.root, **{"AGENTS.md": AGENTS + "@docs/style.md\n", "skills/demo/SKILL.md": "# x\n  @~/notes.md\n```\n@decorator\n```\n"})
-        code, f = check(self.root)
-        self.assertEqual(code, 1)
-        hits = sorted(x["file"] for x in f if x["rule"] == "F6")
-        self.assertEqual(hits, ["AGENTS.md", "skills/demo/SKILL.md"])
-        self.assertIn("inline", [x for x in f if x["rule"] == "F6"][0]["fix"])
+        self.assertIn("R3", rules(f, "warn"))
 
     def test_agents_md_has_a_test_section(self):
         make(self.root, **{"AGENTS.md": "# demo\n\n## Build\nmake\n"})
         code, f = check(self.root)
         self.assertEqual(code, 1)
-        self.assertIn("F7", rules(f, "error"))
-
-    def test_no_design_md_no_finding(self):
-        make(self.root)
-        self.assertNotIn("D1", rules(check(self.root)[1]))
-
-    def test_design_md_clean_passes(self):
-        make(self.root, **{"DESIGN.md": DESIGN})
-        self.assertNotIn("D1", rules(check(self.root)[1]))
-
-    def test_design_md_broken_ref(self):
-        make(self.root, **{"DESIGN.md": DESIGN.replace("{colors.primary}", "{colors.brand}")})
-        code, f = check(self.root)
-        self.assertEqual(code, 1)
-        self.assertEqual([x["msg"] for x in f if x["rule"] == "D1"], ["refs that don't resolve: {colors.brand}"])
-
-    def test_design_md_sections_in_spec_order(self):
-        make(self.root, **{"DESIGN.md": DESIGN.replace("## Colors", "## Tmp").replace("## Shapes", "## Colors").replace("## Tmp", "## Shapes")})
-        self.assertIn("D1", rules(check(self.root)[1], "error"))
-
-    def test_design_md_front_matter_must_parse(self):
-        make(self.root, **{"DESIGN.md": DESIGN.replace("  primary:", "  primary")})
-        self.assertIn("D1", rules(check(self.root)[1], "error"))
-
-    def test_design_md_theme_overrides(self):
-        themed = DESIGN.replace("name: demo\n", "name: demo\nthemes: [light, dark]  # colors.x-dark overrides colors.x\nomitted:\n  - \"--a-*\"\n")
-        make(self.root, **{"DESIGN.md": themed.replace("  primary:", "  primary-dark: \"#fff\"\n  primary:")})
-        self.assertNotIn("D1", rules(check(self.root)[1]))
-        for body, msg in ((themed.replace("  primary:", "  ink-dark: \"#fff\"\n  primary:"), "colors.ink-dark has no base"),
-                          (themed.replace("[light, dark]", "[light]").replace("  primary:", "  primary-dark: \"#fff\"\n  primary:"),
-                           "colors.primary-dark: theme dark isn't in themes"),
-                          (themed.replace("omitted:\n  - \"--a-*\"", "omitted: --a-*"), "omitted isn't a list")):
-            make(self.root, **{"DESIGN.md": body}, **{"CLAUDE.md": None})
-            self.assertIn(msg, [x["msg"] for x in check(self.root)[1] if x["rule"] == "D1"])
-
-    def test_memory_files_carry_name_and_description(self):
-        make(self.root)
-        conf = Path(self.tmp.name) / "claude"
-        mem = conf / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(self.root.resolve())) / "memory"
-        mem.mkdir(parents=True)
-        (mem / "MEMORY.md").write_text("- [a](a.md) — index\n")
-        (mem / "good.md").write_text("---\nname: good\ndescription: fine\nmetadata:\n  type: user\n---\nbody\n")
-        (mem / "bad.md").write_text("# Decisions\nname: not frontmatter\n")
-        code, f = check(self.root, {"CLAUDE_CONFIG_DIR": str(conf)})
-        self.assertEqual(code, 1)
-        hits = [x for x in f if x["rule"] == "M1"]
-        self.assertEqual([Path(x["file"]).name for x in hits], ["bad.md"])
+        self.assertIn("F3", rules(f, "error"))
 
     def test_new_project_passes_check(self):
         r = subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)
@@ -382,9 +254,17 @@ ROOT = FIUM.parent
 class Docs(unittest.TestCase):
     def test_every_cited_rule_id_exists(self):
         ids = set(re.findall(r"\*\*([A-Z]\d+)\b", (ROOT / "RULES.md").read_text()))
-        for doc in ("SKILL.md", "across.md", "AGENTS.md"):
+        for doc in ("SKILL.md", "across.md", "loop.md", "AGENTS.md", "README.md", "templates/GOALS.md", "templates/AGENTS.md"):
             cited = set(re.findall(r"\b([A-Z]\d+)\b", (ROOT / doc).read_text()))
             self.assertEqual(cited - ids, set(), doc)
+
+    def test_check_reports_exactly_the_ticked_rules(self):
+        # A finding cites a rule that still exists, and a rule marked as checked has a check behind it.
+        rules_md = (ROOT / "RULES.md").read_text()
+        ticked = set(re.findall(r"^- \*\*([A-Z]\d+) ✓\*\*", rules_md, re.M))
+        emitted = set(re.findall(r'finding\("([A-Z]\d+)"', (ROOT / "check.py").read_text()))
+        emitted |= set(re.findall(r'\("([A-Z]\d+)", "[\w.]+"\)', (ROOT / "check.py").read_text()))
+        self.assertEqual(emitted, ticked)
 
     def test_layout_names_every_top_level_entry_and_nothing_else(self):
         # Each file says what it's for in one place, and a moved or new one can't go unlisted.

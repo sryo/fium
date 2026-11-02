@@ -153,7 +153,7 @@ class Survey(unittest.TestCase):
         s = self.survey()
         self.assertEqual(s["repos"], 3)
         self.assertEqual(s["passing"], 2)
-        self.assertEqual(s["failures"], {"F5": 1})
+        self.assertEqual(s["failures"], {"F1": 1})
 
     def test_sections_most_repos_add_to_a_template_are_drift(self):
         s = self.survey()

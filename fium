@@ -26,7 +26,9 @@ def main():
     sv.add_argument("--min", type=int, default=3, help="repos a section must appear in to count as drift")
     sv.add_argument("--json", action="store_true")
     pc = sub.add_parser("compare", help="judge what a change costs: a run against a baseline",
-                        epilog="exit 0: nothing worse; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
+                        epilog="exit 0: nothing worse; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps. "
+                               "A stale run whose changes all match bench/inert (a glob per line; !defaults drops the defaults) is carried. "
+                               "Under 5 reps a noisy metric is judged on its median and marked ?")
     pc.add_argument("base", help="run file, or a commit whose run a past compare kept in ~/.fium/runs"); pc.add_argument("run")
     pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}} (default: bench/noise.json, else tests/eval/noise.json)")
     pc.add_argument("--repo", help="repo whose kept runs a commit base names (default: the current directory's)")
@@ -53,7 +55,8 @@ def main():
     sc = sub.add_parser("affects", help="which bench tasks a change can move")
     sc.add_argument("revs", help="base..HEAD")
     sc.add_argument("--repo", default=".")
-    sc.add_argument("--rules", help="rules file (default: <repo>/bench/affects.json)")
+    sc.add_argument("--rules", help='rules file (default: <repo>/bench/affects.json): {"rules": [{"files": [globs], "tasks": [...] | "*" | "none"}]}, '
+                    "first match wins; a changed file no rule matches means every task, unless it is inert")
     sc.add_argument("--json", action="store_true")
     st = sub.add_parser("status", help="each repo's base branch, dirty files, other branches and worktrees; never writes")
     st.add_argument("path", nargs="?", default="~/Documents")

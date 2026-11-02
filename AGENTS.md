@@ -27,7 +27,7 @@ python3 -m unittest discover -s test
 ```
 
 ## Bench
-fium is measured like any other project (RULES.md K4):
+fium is measured like any other project (RULES.md K3):
 ```bash
 ./fium done
 ```
