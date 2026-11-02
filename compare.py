@@ -14,7 +14,6 @@ from check import git
 MIN_N = 5
 NOISY = {"time", "tokens"}
 DEFAULT_REL = 0.10
-TRAILER = re.compile(r"^(Price|Bench-Accepted):\s*([^;]+);\s*([^;]+?)\s*->\s*([^;]+?);\s*buys:\s*(.*?)(?:;\s*tried:\s*(.*?))?;\s*owner:\s*(.+)$", re.M)
 
 
 def lcg(seed):
@@ -43,7 +42,7 @@ def ratio_range(base, run, n=2000):
     return out[int(0.025 * n)], out[int(0.975 * n) - 1]
 
 
-def judge(name, base, run, rel, limit, priced, abs_=0, cap=(2, 0)):
+def judge(name, base, run, rel, limit, abs_=0, cap=(2, 0)):
     if run is None or not run.get("samples") or not base.get("samples"):
         return {"metric": name, "verdict": "missing"}
     lower = base.get("dir", "lower") == "lower"
@@ -81,14 +80,12 @@ def judge(name, base, run, rel, limit, priced, abs_=0, cap=(2, 0)):
         worse = mr > mb if lower else mr < mb
         better = mr < mb if lower else mr > mb
         v = "worse" if worse else "better" if better else "same"
-    # The owner's cap (GOALS.md Caps:): 0 only reported, 1 may grow by its slack, 2 needs a price, 3 never grows.
+    # The owner's cap (GOALS.md Caps:): 0 soft, no limit; 1 and 2 semi-hard, growth within the margin passes and past
+    # it the user chooses; 3 hard, it must end the same or better.
     level, slack = cap
     row["cap"] = level
-    if v == "worse" and (level == 0 or (level == 1 and mb and abs(mr - mb) / abs(mb) <= slack)):
+    if v == "worse" and (level == 0 or (level in (1, 2) and mb and abs(mr - mb) / abs(mb) <= slack)):
         v = "grew"
-    # An exact metric's prices cover only the growth they add up to; a noisy one's cover it while it lasts.
-    if v == "worse" and level < 3 and name in priced and (noisy or abs(mr - mb) <= priced[name]):
-        v = "priced"
     return {**row, "verdict": v}
 
 
@@ -97,13 +94,14 @@ CAP_LINE = re.compile(r"^\s*(?:Caps|Topes):\s*`?([^`\n]+)`?", re.M | re.I)
 
 
 def parse_caps(text):
-    # "q3 k2 n2 b1 t1 t.js*=2 mount*=1:25": a level per kind letter, then overrides by metric glob.
+    # "q3 k2 n2 b1 t1 t.js*=2 mount*=1:25": a level per kind letter, then overrides by metric glob. The margin after
+    # ":" is a percent; 1 has 10% unless it says otherwise, 2 none unless it says one.
     kinds, globs = {}, []
     m = CAP_LINE.search(text or "")
     for tok in (m.group(1).split() if m else []):
         key, _, val = tok.rpartition("=") if "=" in tok else (tok[0], "", tok[1:])
         lvl, _, pct = val.partition(":")
-        cap = (int(lvl), float(pct) / 100 if pct else 0.10)
+        cap = (int(lvl), float(pct) / 100 if pct else 0.10 if lvl == "1" else 0)
         if "=" in tok:
             globs.append((key, cap))
         else:
@@ -126,13 +124,13 @@ def goals_text(path):
     return p.read_text() if p and p.exists() else ""
 
 
-def price_compare(base_path, run_path, noise_path=None, priced=None, repo=None):
+def price_compare(base_path, run_path, noise_path=None, repo=None):
     base, run = json.load(open(base_path)), json.load(open(run_path))
     noise = json.load(open(noise_path)) if noise_path else {}
     rel, abs_ = noise.get("rel", {}), noise.get("abs", {})
     limits = {**base.get("limits", {}), **run.get("limits", {})}
     caps = parse_caps(goals_text(repo or base_path))
-    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), priced or {}, abs_.get(n, 0),
+    return [judge(n, m, run["metrics"].get(n), rel.get(n, DEFAULT_REL), limits.get(n), abs_.get(n, 0),
                   cap_for(n, m.get("kind", "time"), caps))
             for n, m in base["metrics"].items()]
 
@@ -219,22 +217,6 @@ def find_run(rev, repo):
     return str(hits[0])
 
 
-def price_ledger(repo, since=None):
-    rng = f"{since}..HEAD" if since else "HEAD"
-    log = subprocess.run(["git", "-C", str(repo), "log", "--format=%h%x00%B%x01", rng], capture_output=True, text=True).stdout
-    rows = []
-    for entry in log.split("\x01"):
-        if "\x00" not in entry:
-            continue
-        sha, body = entry.strip().split("\x00", 1)
-        for m in TRAILER.finditer(body):
-            rows.append({"commit": sha, "metric": m[2].strip(), "before": m[3].strip(), "after": m[4].strip(),
-                         "buys": m[5].strip(), "tried": (m[6] or "").strip(), "owner": m[7].strip()})
-    return rows
-
-
-
-
 def scope(repo, revs, affects):
     # Which bench tasks a change can move. A file no rule matches could move anything, so it means all.
     rules = json.load(open(affects))["rules"]
@@ -265,16 +247,19 @@ def scope_main(a):
 
 
 
+def change(base, run):
+    if not all(isinstance(v, (int, float)) for v in (base, run)):
+        return f"{base} -> {run}"
+    d = run - base
+    if not d:
+        return f"{run:g}"
+    pct = f", {d / base * 100:+.3g}%" if base else ""
+    return f"{base:g} -> {run:g} ({d:+g}{pct})"
+
+
 def compare_main(a):
-    num = lambda x: float(x.replace(",", ""))
-    priced = {m: math.inf for m in a.price}
-    for r in price_ledger(a.repo or ".", a.since) if a.since else []:
-        try:
-            priced[r["metric"]] = priced.get(r["metric"], 0) + abs(num(r["after"]) - num(r["before"]))
-        except ValueError:
-            priced[r["metric"]] = math.inf
     base = find_run(a.base, a.repo or ".")
-    rows = price_compare(base, a.run, a.noise, priced, (a.repo or ".") if base != a.base else None)
+    rows = price_compare(base, a.run, a.noise, (a.repo or ".") if base != a.base else None)
     keep_runs(a.repo or ".", base, a.run)
     stale = stale_row(a.run, a.repo or ".")
     rows += [stale] if stale else []
@@ -282,7 +267,7 @@ def compare_main(a):
         print(json.dumps(rows))
     else:
         for r in rows:
-            print(f"{r['verdict'] + ('?' if r.get('low_n') else ''):>12}  {r['metric']}: {r.get('base')} -> {r.get('run')}" + (f"  range {r['range']}" if "range" in r else ""))
+            print(f"{r['verdict'] + ('?' if r.get('low_n') else ''):>12}  {r['metric']}: {change(r.get('base'), r.get('run'))}" + (f"  range {r['range']}" if "range" in r else ""))
     vs = {r["verdict"] for r in rows}
     if stale and not a.json:
         fix = ("stamp the run with \"commit\": git rev-parse HEAD and \"dirty\": whether git status --porcelain is non-empty"

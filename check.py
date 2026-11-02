@@ -46,12 +46,19 @@ def check_goals(root):
         covered = {c.split("|")[1].strip() for c in m.group(1).splitlines() if c.startswith("|")}
         for g in sorted(goals - covered):
             out.append(finding("G2", "error", "GOALS.md", f"goal {g} has no row in How we know", "add: | {g} | metric | command or file |".replace("{g}", g)))
-        rows = [r for r in m.group(1).splitlines() if r.startswith("|")][2:]
-        for r in rows:
-            cells = [c.strip() for c in r.strip("|").split("|")]
-            if len(cells) < 3 or not cells[1] or not cells[-1]:
+        table = [r for r in m.group(1).splitlines() if r.startswith("|")]
+        head = [c.strip().lower() for c in table[0].strip().strip("|").split("|")] if table else []
+        if table and "run" not in head:
+            out.append(finding("G2", "warning", "GOALS.md", "How we know has no Run column, so fium done can't measure it",
+                               "add | Run | to each row: `the command`, live: `a command on live state`, or by hand"))
+        for r in table[2:]:
+            cells = [c.strip() for c in r.strip().strip("|").split("|")]
+            if len(cells) < 3 or not cells[1] or not cells[2]:
                 out.append(finding("G2", "error", "GOALS.md", f"metric row without a metric or a where: {r.strip()}",
                                    "name the command or file that measures it"))
+            elif "run" in head and not (cells[head.index("run")] if len(cells) > head.index("run") else ""):
+                out.append(finding("G2", "warning", "GOALS.md", f"row without a Run cell: {r.strip()}",
+                                   "`the command`, live: `a command on live state`, or by hand"))
     return out
 
 

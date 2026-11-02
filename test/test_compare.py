@@ -14,7 +14,7 @@ def metric(samples, dir="lower", kind="time"):
     return {"dir": dir, "kind": kind, "samples": samples}
 
 
-class Price(unittest.TestCase):
+class Compare(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name)
@@ -53,6 +53,14 @@ class Price(unittest.TestCase):
         r = self.write("r.json", {"t": metric([70] * 6)})
         _, v = self.compare(b, r)
         self.assertEqual(v["t"]["verdict"], "better")
+
+    def test_text_shows_each_change_as_a_difference_and_a_percent(self):
+        b = self.write("b.json", {"t": metric([100] * 6), "n": metric([4] * 6, kind="count"), "z": metric([0] * 6, kind="count")})
+        r = self.write("r.json", {"t": metric([70] * 6), "n": metric([5] * 6, kind="count"), "z": metric([2] * 6, kind="count")})
+        out = run("compare", b, r, cwd=self.d)[1]
+        self.assertIn("t: 100 -> 70 (-30, -30%)", out, "a reader judges a change by its size and its share of the base")
+        self.assertIn("n: 4 -> 5 (+1, +25%)", out)
+        self.assertIn("z: 0 -> 2 (+2)", out, "no percent of a zero base")
 
     def test_noisy_borderline_is_inconclusive_and_blocks(self):
         b = self.write("b.json", {"t": metric([100, 140, 80, 120, 90, 110])})
@@ -98,19 +106,12 @@ class Price(unittest.TestCase):
         _, v = self.compare(b, r, "--noise", n)
         self.assertEqual(v["t"]["verdict"], "same")
 
-    def test_limit_is_never_crossed_even_if_priced(self):
+    def test_limit_is_never_crossed(self):
         b = self.write("b.json", {"bytes": metric([900], kind="bytes")}, limits={"bytes": 1000})
         r = self.write("r.json", {"bytes": metric([1100], kind="bytes")})
-        code, v = self.compare(b, r, "--price", "bytes")
+        code, v = self.compare(b, r)
         self.assertEqual(v["bytes"]["verdict"], "limit")
         self.assertEqual(code, 1)
-
-    def test_priced_regression_passes(self):
-        b = self.write("b.json", {"calls": metric([4], kind="count")})
-        r = self.write("r.json", {"calls": metric([5], kind="count")})
-        code, v = self.compare(b, r, "--price", "calls")
-        self.assertEqual(v["calls"]["verdict"], "priced")
-        self.assertEqual(code, 0)
 
     def test_goals_caps_set_how_firm_each_metric_is(self):
         subprocess.run(["git", "init", "-q", str(self.d)], check=True)
@@ -118,9 +119,9 @@ class Price(unittest.TestCase):
         m = lambda v, k="bytes": metric([v], kind=k)
         b = self.write("b.json", {"dash": m(1000), "t.js": m(500), "big": m(10), "q": m(1, "quality"), "ms": m(5, "time")})
         r = self.write("r.json", {"dash": m(1080), "t.js": m(501), "big": m(11), "q": m(1, "quality"), "ms": m(9, "time")})
-        code, v = self.compare(b, r, "--price", "t.js", "--price", "big")
-        got = {k: v[k]["verdict"] for k in ["dash", "t.js", "big", "ms"]}
-        self.assertEqual(got, {"dash": "grew", "t.js": "priced", "big": "worse", "ms": "grew"})
+        code, v = self.compare(b, r)
+        got = {k: (v[k]["verdict"], v[k]["cap"]) for k in ["dash", "t.js", "big", "ms"]}
+        self.assertEqual(got, {"dash": ("grew", 1), "t.js": ("worse", 2), "big": ("worse", 3), "ms": ("grew", 0)})
         self.assertEqual(code, 1)
         _, v = self.compare(b, self.write("r2.json", {"dash": m(1200), "t.js": m(500), "big": m(10), "q": m(1, "quality"), "ms": m(5, "time")}))
         self.assertEqual(v["dash"]["verdict"], "worse")
@@ -192,28 +193,6 @@ class Price(unittest.TestCase):
         self.assertEqual(self.compare(b, self.write("r2.json", {"h": metric([40000], dir="higher", kind="limit")}))[1]["h"]["verdict"], "limit")
 
 
-class Ledger(unittest.TestCase):
-    def test_trailers_excuse_their_metric_since(self):
-        with tempfile.TemporaryDirectory() as t:
-            g = lambda *a: subprocess.run(["git", "-C", t, *a], capture_output=True, check=True)
-            g("init", "-q"); g("config", "user.email", "a@b"); g("config", "user.name", "a")
-            g("commit", "-q", "--allow-empty", "-m", "base"); g("tag", "base")
-            g("commit", "-q", "--allow-empty", "-m", "x\n\nPrice: calls; 4 -> 5; buys: a; with semicolons; tried: b; owner: \"ok\", 2026-10-31")
-            g("commit", "-q", "--allow-empty", "-m", "y\n\nBench-Accepted: bytes; 10 -> 12; buys: icons; owner: \"fine\", 2026-10-30")
-            d = Path(t)
-            m = lambda v, k: {"dir": "lower", "kind": k, "samples": [v]}
-            (d / "b.json").write_text(json.dumps({"metrics": {"calls": m(4, "count"), "bytes": m(10, "bytes"), "q": m(1, "count")}}))
-            (d / "r.json").write_text(json.dumps({"metrics": {"calls": m(5, "count"), "bytes": m(12, "bytes"), "q": m(2, "count")}}))
-            code, out = run("compare", "--json", "--since", "base", "--repo", t, str(d / "b.json"), str(d / "r.json"))
-            v = {r["metric"]: r["verdict"] for r in json.loads(out)}
-            self.assertEqual(v, {"calls": "priced", "bytes": "priced", "q": "worse", "(commit)": "unstamped"})
-            self.assertEqual(code, 1)
-            # Growth past what the prices add up to is not covered by them.
-            (d / "r2.json").write_text(json.dumps({"metrics": {"calls": m(6, "count"), "bytes": m(12, "bytes"), "q": m(1, "count")}}))
-            code, out = run("compare", "--json", "--since", "base", str(d / "b.json"), str(d / "r2.json"))
-            self.assertEqual({r["metric"]: r["verdict"] for r in json.loads(out)}["calls"], "worse")
-
-
 class Stale(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -247,15 +226,15 @@ class Stale(unittest.TestCase):
         self.assertEqual(v["(commit)"]["verdict"], "stale")
         self.assertEqual(code, 1)
 
-    def test_a_price_committed_after_its_run_keeps_it_fresh(self):
+    def test_a_noise_commit_after_its_run_keeps_it_fresh(self):
         g = lambda *a: subprocess.run(["git", "-C", self.tmp.name, *a], capture_output=True, check=True)
         (self.d / "bench").mkdir()
         (self.d / "bench" / "noise.json").write_text("{}")
-        g("add", "bench"); g("commit", "-q", "-m", "p\n\nPrice: calls; 4 -> 5; buys: a; owner: \"ok\", 2026-10-31")
+        g("add", "bench"); g("commit", "-q", "-m", "noise")
         code, v = self.compare(commit=self.head)
         self.assertEqual((v["(commit)"]["verdict"], code), ("carried", 0))
         (self.d / "code.py").write_text("x")
-        g("add", "code.py"); g("commit", "-q", "-m", "q\n\nPrice: calls; 4 -> 5; buys: a; owner: \"ok\", 2026-10-31")
+        g("add", "code.py"); g("commit", "-q", "-m", "code")
         self.assertEqual(self.compare(commit=self.head)[1]["(commit)"]["verdict"], "stale")
 
     def test_docs_carry_a_run_but_skill_docs_do_not(self):

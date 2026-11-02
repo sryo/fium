@@ -10,6 +10,7 @@
 - `fium`: CLI entry
 - `check.py`: check
 - `compare.py`: compare, noise, scope
+- `done.py`: done
 - `repos.py`: survey, status, grep, new
 - `sleep.py`: sleep
 - `templates/`: what new copies
@@ -24,10 +25,9 @@ python3 -m unittest discover -s test
 ```
 
 ## Bench
-fium is priced like any other project (RULES.md K). Commit first, then:
+fium is measured like any other project (RULES.md K4):
 ```bash
-./fium compare $(bench/run.py --paired) --since <baseline commit>
+./fium done
 ```
-Growth in read_bytes or loc needs a `Price:` trailer (K4).
 
 A rule `fium check` can verify gets a ✓ in RULES.md and a test in test/test_check.py. Write the test first.

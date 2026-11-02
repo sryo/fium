@@ -1,0 +1,210 @@
+"""fium done: can this change merge? Every How we know row, measured where it left the base branch and now."""
+import json, re, shutil, statistics, subprocess, sys, tempfile, time
+from fnmatch import fnmatch
+from pathlib import Path
+
+from check import git
+from compare import DEFAULT_REL, cap_for, change, judge, parse_caps, runs_dir
+
+
+def how_we_know(goals):
+    # Each row's Run cell: `cmd` runs here and at the base; costly: `cmd` too, but only with --costly (an agent eval
+    # spends tokens); live: `cmd` reads live state, so it runs only here. Anything else is for the user to check by
+    # hand. A table without a Run column still lists its rows, so none goes missing.
+    m = re.search(r"^## How we know\n(.*?)(?=^## |\Z)", goals, re.M | re.S)
+    lines = [l for l in (m.group(1).splitlines() if m else []) if l.startswith("|")]
+    if not lines:
+        return []
+    # A cell may hold a pipe written \|, as in a shell command.
+    split = lambda l: [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", l.strip().strip("|"))]
+    head = [c.lower() for c in split(lines[0])]
+    rows = []
+    for l in lines[2:]:
+        cells = split(l)
+        run = cells[head.index("run")] if "run" in head and len(cells) > head.index("run") else ""
+        m = re.fullmatch(r"(?:(live|costly):\s*)?`(.+)`", run)
+        rows.append({"goal": cells[0], "metric": cells[1] if len(cells) > 1 else "", "cmd": m[2] if m else None,
+                     "kind": m[1] if m else None, "by_hand": run, "text": l,
+                     "where": cells[head.index("where")] if "where" in head and len(cells) > head.index("where") else ""})
+    return rows
+
+
+def execute(cmd, cwd):
+    # What a command printed, kept raw so a cached base is read the same way as a fresh one.
+    t = time.monotonic()
+    r = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
+    raw = {"code": r.returncode, "s": round(time.monotonic() - t, 2), "out": r.stdout[-20000:], "err": r.stderr[-20000:]}
+    lines = r.stdout.strip().splitlines()
+    last = lines[-1].strip() if lines else ""
+    if last.endswith(".json") and (Path(cwd) / last).is_file():
+        raw["run"] = json.loads((Path(cwd) / last).read_text())
+    return raw
+
+
+def measure(raw, name):
+    # A command's last line is either a run file (RULES.md K2), whose metrics count, or a number, named after its row.
+    out = {"ok": raw["code"] == 0, "s": raw["s"], "metrics": {}, "limits": {}}
+    lines = raw["out"].strip().splitlines()
+    last = lines[-1].strip() if lines else ""
+    if "run" in raw:
+        out["metrics"], out["limits"] = dict(raw["run"].get("metrics", {})), raw["run"].get("limits", {})
+    elif re.match(r"-?\d+(\.\d+)?(\s|$)", last) and not re.match(r"\d+ passed", last):
+        # Its kind, for the row's cap, comes from the row's words: bytes, time, tokens, else a count.
+        kind = next((k for k, w in (("bytes", r"bytes|\bKB\b|\bMB\b"), ("time", r"\bms\b|seconds|\btime\b"), ("tokens", r"tokens"))
+                     if re.search(w, name, re.I)), "count")
+        out["metrics"] = {name: {"dir": "lower", "kind": kind, "samples": [float(last.split()[0])]}}
+    else:
+        out["last"] = last[:80]
+    # A test runner's count of passing tests (node --test, unittest, pytest): fewer tests means less checked.
+    tests = re.findall(r"^[ℹ#] pass (\d+)$|^Ran (\d+) tests?|(\d+) passed", raw["out"] + raw["err"], re.M)
+    if tests:
+        # A command may run several runners; their counts add up.
+        out["metrics"]["tests passing"] = {"dir": "higher", "kind": "count",
+                                           "samples": [float(sum(int(next(x for x in t if x)) for t in tests))]}
+    return out
+
+
+def at_base(repo, sha, cmds, fresh=()):
+    # The base is measured once per commit, in a throwaway worktree beside the repo (so a test that looks for a sibling
+    # checkout finds it), and kept only so the next done needn't redo it.
+    cache = runs_dir(repo) / f"done-{sha}.raw.json"
+    have = json.loads(cache.read_text()) if cache.exists() else {}
+    # A costly row runs against the live world (a browser's tabs, a model), so its base is measured now, beside the
+    # current tree, never read back from an earlier run.
+    need = [c for c in cmds if c not in have or c in fresh]
+    if need:
+        tmp = Path(tempfile.mkdtemp(prefix=f".fium-done-{repo.name}-", dir=repo.parent))
+        wt = tmp
+        tmp.rmdir()
+        git(repo, "worktree", "add", "--detach", "-q", str(wt), sha)
+        try:
+            for dep in ("node_modules", ".venv"):
+                if (repo / dep).is_dir():
+                    (wt / dep).symlink_to(repo / dep)
+            for c in need:
+                have[c] = execute(c, wt)
+        finally:
+            git(repo, "worktree", "remove", "--force", str(wt))
+            shutil.rmtree(tmp, ignore_errors=True)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        # A failed measurement isn't kept, so the next done tries it again.
+        cache.write_text(json.dumps({c: x for c, x in have.items() if x["code"] == 0 and c not in fresh}))
+    return have
+
+
+def named(name, text):
+    return bool(re.search(r"(?<![\w.])" + re.escape(name) + r"(?!\w)", text, re.I))
+
+
+def claims(name, text):
+    # A row names a metric by its exact name, or by a pattern in backticks where <...> stands for any part.
+    return bool(named(name, text) or any(
+        re.fullmatch(re.sub(r"<[^>]+>", ".+", re.escape(p).replace("\\<", "<").replace("\\>", ">")), name)
+        for p in re.findall(r"`([^`]*<[^`>]+>[^`]*)`", text)))
+
+
+def short(cmd):
+    return cmd if len(cmd) <= 60 else cmd[:57] + "..."
+
+
+def done_main(a):
+    repo = Path(git(".", "rev-parse", "--show-toplevel").stdout.strip() or ".").resolve()
+    goals = (repo / "GOALS.md").read_text() if (repo / "GOALS.md").exists() else ""
+    rows = how_we_know(goals)
+    branch = a.base or next((b for b in ("main", "master") if not git(repo, "rev-parse", "-q", "--verify", b).returncode), "HEAD")
+    sha = git(repo, "merge-base", branch, "HEAD").stdout.strip()
+    dirty = bool(git(repo, "status", "--porcelain").stdout.strip())
+    cmds = list(dict.fromkeys(r["cmd"] for r in rows if r["cmd"] and (not r["kind"] or r["kind"] == "costly" and a.costly)))
+    label = {}
+    for r in rows:
+        label.setdefault(r["cmd"], r["metric"])
+    costly = {r["cmd"] for r in rows if r["kind"] == "costly"}
+    base = {c: measure(raw, label[c]) for c, raw in at_base(repo, sha, cmds, costly).items() if c in cmds}
+    here = {c: measure(execute(c, repo), label[c]) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
+    caps = parse_caps(goals)
+    print(f"fium done: {'this tree' if dirty else 'HEAD'} against {branch} at {sha[:7]}")
+    # Each row shows under its goal's name from the Goals list, so nobody has to look a number up.
+    titles = dict(re.findall(r"^(\d+)\.\s+\*\*(.+?)\.?\*\*", goals.split("## How we know")[0], re.M))
+    shown = None
+    # A command's metrics show under the row whose Where names them, else whose text does, else its first row.
+    owner = {}
+    names = claims
+    for c in cmds:
+        users = [i for i, r in enumerate(rows) if r["cmd"] == c and r["kind"] != "live"]
+        for name in {**base[c]["metrics"], **here[c]["metrics"]}:
+            owner[(c, name)] = ([i for i in users if names(name, rows[i]["where"])] or
+                                [i for i in users if names(name, rows[i]["text"])] or users)[0]
+    blocked, hard, grew, pending, unmeasured = [], [], [], [], []
+    for r in rows:
+        if r["goal"] != shown:
+            print(titles.get(r["goal"], f"Goal {r['goal']}"))
+            shown = r["goal"]
+        print(f"  {r['metric']}")
+        c = r["cmd"]
+        if not c:
+            print(f"       {r['by_hand'] or 'no Run cell'}: check it yourself")
+            continue
+        if r["kind"] == "live":
+            got = here[c]["metrics"].get(label[c])
+            print(f"       live `{short(c)}`: " + (f"{got['samples'][0]:g} now" if got else ("" if here[c]["ok"] else "fails, ")
+                                                     + (here[c].get("last") or "no output")))
+            continue
+        if c not in here:
+            print(f"       costly `{short(c)}`: not run; state its cost, then fium done --costly")
+            pending.append(r["metric"])
+            continue
+        b, h = base[c], here[c]
+        i = rows.index(r)
+        state = ("ok" if b["ok"] else "ok now, failed at the base") if h["ok"] else "fails" + ("" if b["ok"] else " (failed at the base too)")
+        if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
+            print(f"       `{short(c)}`: {state}, {b['s']:g}s -> {h['s']:g}s")
+            if b["ok"] and not h["ok"]:
+                blocked.append(c)
+            elif not b["ok"]:
+                # A command that failed at the base measured nothing to hold now against, for every row that runs it.
+                why = "fails before and after" if not h["ok"] else "failed at the base"
+                unmeasured += [f"{x['metric']} ({why})" for x in rows if x["cmd"] == c and x["kind"] != "live"]
+        else:
+            print(f"       `{short(c)}`: {state}, as above")
+        mine = [n for n in {**b["metrics"], **h["metrics"]} if owner[(c, n)] == i]
+        for name in mine:
+            if name not in b["metrics"]:
+                print(f"     {'new':>9}  {name}: {statistics.median(h['metrics'][name]['samples']):g}")
+        same = 0
+        for name, m in b["metrics"].items():
+            if name not in mine:
+                continue
+            v = judge(name, m, h["metrics"].get(name), DEFAULT_REL, {**b["limits"], **h["limits"]}.get(name), 0,
+                      cap_for(name, m.get("kind", "time"), caps))
+            # An unchanged number still shows when its row or a Caps override names it: those are the ones watched.
+            if v["verdict"] == "same" and len(mine) > 3 and not (
+                    named(name, r["text"]) or any(fnmatch(name, g) for g, _ in caps[1])):
+                same += 1
+                continue
+            print(f"     {v['verdict'] + ('?' if v.get('low_n') else ''):>9}  {name}: {change(v.get('base'), v.get('run'))}")
+            if v["verdict"] in ("limit", "missing"):
+                blocked.append(name)
+            elif v["verdict"] == "worse" or v["verdict"] == "inconclusive" and v["base"] and (
+                    v["run"] / v["base"] > 1 + DEFAULT_REL if m.get("dir", "lower") == "lower" else v["run"] / v["base"] < 1 - DEFAULT_REL):
+                # Inconclusive counts only when its median moved past the noise band the wrong way.
+                (hard if v["cap"] == 3 else grew).append(name)
+        if same:
+            print(f"     {same} same")
+    # Caps (GOALS.md): a hard cap that grew isn't done until it's the same or better, or the user agrees it can't get
+    # there without lowering quality; a semi-hard one past its margin merges only if the user lets it.
+    blocked, hard, grew = (list(dict.fromkeys(x)) for x in (blocked, hard, grew))
+    if blocked:
+        print(f"Not done: {', '.join(blocked)} broke or crossed a limit. Fix it.")
+    if hard:
+        print(f"Not done: {', '.join(hard)} (hard) grew. Make it the same or better, or agree with the user it can't be without lowering quality.")
+    if grew:
+        print(f"{', '.join(grew)} (semi-hard) grew past its margin. Simplify it, or the user lets it pass.")
+    if pending and not (blocked or hard):
+        print(f"Not measured yet: {', '.join(dict.fromkeys(pending))} (costly). It isn't done until they run, or the user says they needn't.")
+    if unmeasured:
+        print(f"Couldn't measure: {', '.join(unmeasured)}. It isn't done until they run clean, or the user says they needn't.")
+    if blocked or hard:
+        sys.exit(1)
+    if grew or pending or unmeasured:
+        sys.exit(3)
+    print("Nothing grew past its cap and nothing broke: it can merge.")

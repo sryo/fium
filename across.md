@@ -9,7 +9,7 @@ One change, or one goal, that spans several repos under `~/Documents`. You manag
 ## 2. Plan outside the repos
 - Write `~/.fium/campaigns/<name>.md` with one row per change: the repo, the change, and the failing test that proves it. No plan file goes in any repo.
 - Within a repo, the failing tests are the spec. Write a spec only for a contract between repos, meaning an interface, its old and new behaviour, and the order changes land in. That contract also lives in the note.
-- List the decisions only the user can make: deletions, API shape, memory edits, prices (K4). Ask them before the work reaches each one.
+- List the decisions only the user can make: deletions, API shape, memory edits, whether a change is done (K4). Ask them before the work reaches each one.
 
 ## 3. One session per repo
 - Each session gets a brief with the goal, the files it owns, and what done means: the `## Test` command passes at a named commit. It cuts its own branch from the base. Never put two sessions on one repo at once.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fium: check a project against RULES.md, price its changes, and read across repos. Each finding cites a rule id."""
+"""fium: check a project against RULES.md, judge whether a change can merge, and read across repos. Each finding cites a rule id."""
 import argparse, json, os, sys
 from pathlib import Path
 
@@ -7,6 +7,7 @@ HOME = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOME))
 from check import check, own_checks  # noqa: E402
 from compare import DEFAULT_REL, compare_main, noise, scope_main  # noqa: E402
+from done import done_main  # noqa: E402
 from repos import grep_main, new, status_main, survey_main  # noqa: E402
 
 
@@ -24,13 +25,15 @@ def main():
     sv.add_argument("--min", type=int, default=3, help="repos a section must appear in to count as drift")
     sv.add_argument("--json", action="store_true")
     pc = sub.add_parser("compare", help="judge what a change costs: a run against a baseline",
-                        epilog="exit 0: lands; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
+                        epilog="exit 0: nothing worse; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
     pc.add_argument("base", help="run file, or a commit whose run a past compare kept in ~/.fium/runs"); pc.add_argument("run")
     pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}}")
-    pc.add_argument("--price", action="append", default=[], help="metric the owner accepted a cost on")
-    pc.add_argument("--since", help="also accept metrics priced by Price: trailers in since..HEAD")
-    pc.add_argument("--repo", help="repo whose Price: trailers --since reads (default: the current directory's)")
+    pc.add_argument("--repo", help="repo whose kept runs a commit base names (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
+    dn = sub.add_parser("done", help="can this change merge? every How we know row, where it left the base branch and now",
+                        epilog="exit 0: merge; 1: something broke or crossed a limit; 3: something grew, the user decides")
+    dn.add_argument("--base", help="branch it merges into (default: main, else master)")
+    dn.add_argument("--costly", action="store_true", help="also run the costly: rows (agent evals), at the base and here")
     ns = sub.add_parser("noise", help="write noise.json for compare --noise from an A/A run, to stdout")
     ns.add_argument("base"); ns.add_argument("run")
     ns.add_argument("--min", type=float, default=DEFAULT_REL, help="the least rel any metric gets (default 0.10)")
@@ -58,6 +61,8 @@ def main():
         return new(a.name)
     if a.cmd == "scope":
         return scope_main(a)
+    if a.cmd == "done":
+        return done_main(a)
     if a.cmd == "compare":
         return compare_main(a)
     if a.cmd == "noise":

@@ -12,9 +12,9 @@ When two goals conflict, the higher one wins.
 1. **Goal.** One or two sentences.
 
 ## How we know
-| Goal | Metric | Where |
-|---|---|---|
-| 1 | what is measured | `command or file` |
+| Goal | Metric | Where | Run |
+|---|---|---|---|
+| 1 | what is measured | `command or file` | `what fium done runs`, costly: `…`, live: `…`, or by hand |
 
 Caps: `q3 k2 n2 b2 t1` (the owner's: how firm each kind of number is, fium RULES.md K6)
 

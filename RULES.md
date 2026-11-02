@@ -24,7 +24,7 @@ How every project here is laid out, measured and improved. Each rule has an id f
   - Goals, in priority order (the higher goal wins a conflict)
   - How we know
   - Non-goals
-- **G2 ✓** Every goal has a How we know row: Goal | Metric | Where. Where is the command, test or file that measures it, or "manual" when nothing can measure it yet.
+- **G2 ✓** Every goal has a How we know row: Goal | Metric | Where | Run. Where is the command, test or file that measures it, or "manual" when nothing can measure it yet. Run is what `fium done` runs: `` `the command` `` at the base and now, `` costly: `…` `` the same but only with `--costly` (an agent eval), `` live: `…` `` on live state, now only, or by hand. A command's last line is a run file (K2) or a number.
 
 ## README (R)
 A README is for someone deciding whether they want this, and then using it. It says why it's useful and how to use it, in plain words. Use rooms, avis and perch as models.
@@ -39,31 +39,30 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **D1 ✓** A UI repo may keep `DESIGN.md` in Google's format (templates/DESIGN.md). Its front matter parses, its `{ref}`s resolve and its `##` sections keep the spec's order, so agents and figma-cdp read one coherent source.
 
 ## Live runs (L)
-- **L1** Before a live run, state what it will cost in tokens, turns and wall time. Prices are never in dollars.
+- **L1** Before a live run, state what it will cost in tokens, turns and wall time. Costs are never in dollars.
 - **L2** Run only the tasks a change touches, at 2 reps. Add a third only when the two disagree. Refreshing a baseline takes 3.
 - **L3** Spend live runs sparingly. Read the transcripts you already have first, batch fixes into one run, and give routing-only changes a single smoke rep.
 - **L4** After 5 runs in a row with no keep, stop or change approach.
 - **L5** Before a run, predict each metric's verdict and name the reading that would prove the change wrong. When a verdict surprises you, check the bench before the code: its noise, its baseline, its commit.
 - **L6** Run only the tasks `fium scope <base>..HEAD` names. It reads `bench/affects.json` (`{"rules": [{"files": [globs], "tasks": [...] | "*" | "none"}]}`, first match wins). A changed file no rule matches means every task, unless it is inert.
 
-## Prices (K)
-A change lands only if it costs no more than before, unless the user accepts the price. A limit blocks it even then. `fium compare bench/baseline.json <run>` makes the call.
+## Cost (K)
+A change is done when the user has seen what it did to each of the project's own metrics and says it can merge. `fium done` measures them; something that broke or crossed a limit blocks it.
 - **K1** Commit before you measure, so every experiment can be reverted.
 - **K2** A bench writes `{"metrics": {name: {"dir": "lower"|"higher", "kind", "samples": [...]}}, "limits": {name: line}}`.
   - Exact metrics are judged on any move. Time and tokens are noisy by default. Set `"noisy": true` on anything else that varies between identical runs, such as an agent's turns or a scorer's output.
   - Noisy metrics are judged on the bootstrap range of the median ratio against 1 ± noise. Paired reps are judged on their rep-by-rep ratios. Noise comes from `bench/noise.json` (`{"rel": {metric: fraction}, "abs": {metric: amount}}`), written by `fium noise <aa-base> <aa-run>`: the farthest the A/A's range strays from 1, rounded up to a percent and at least 10%, the default; a move no bigger than `abs` is same.
   - A `limit` kind is judged only against its limit.
-  - A price covers an exact metric's growth up to what its trailers add up to.
   - A run carries the `"commit"` it measured (`git rev-parse HEAD`) and `"dirty"`: whether `git status --porcelain` printed anything.
   - Runs live in `~/.fium/runs/<repo>/`, not in the repo.
 - **K3** A worse, missing, limit or stale verdict blocks the change. A run is stale when its tree was dirty or its commit isn't HEAD. It is `carried`, and its numbers stand, when everything changed since matches an inert glob: the defaults plus any in `bench/inert` (one per line; a `!defaults` line drops the defaults; `bench/inert` itself is always inert). The defaults are the human docs, `test/`, `tests/`, noise and baseline files. Agent-facing docs such as SKILL.md and `references/` are never inert by default, since they change what a run measures. An unstamped run is flagged, not blocked. Inconclusive also blocks: its median is outside the noise band, but the range is too wide to call. Rerun it with more reps. With fewer than 5 reps on a side, a noisy metric is judged on its median against the band. The verdict is marked low-confidence (`low_n`, printed with a `?`), and a worse median still blocks.
-- **K4** Only the user sets a price, and before the work. A proposal quotes `<before> -> <predicted after>` per metric it moves, and quotes cheaper variants. The user's yes sets the price; a number over its quote, or an unquoted one that got worse, goes back to them before landing. One trailer per number: `Price: <metric>; <before> -> <after>; buys: <what>; tried: <variants the user turned down>; owner: "<the user's words>", <date>`. The agent never writes the owner's words.
+- **K4** The user decides when a change is done. `fium done` measures every How we know row where the change left the base branch and now, and prints each number with its difference and percent; a row it can't run still shows, marked by hand. Each number is held to its cap (K6). The plan predicts the numbers it moves (W1), so the result has something to meet. The decision is the user's word in the conversation, never a record in commits or files.
 - **K5** When the score is equal, less code wins (`git diff --shortstat`). Refresh the baseline only in its own commit. Unit tests assert what an action costs (queries, writes, calls) with the bench's fakes, so a cost regression fails the fast suite.
-- **K6** The user chooses how firm each cap is, in one `Caps:` line under GOALS.md's How we know. A digit per kind sets the default: `q` quality, `k` tokens, `n` counts and loc, `b` bytes, `t` time. `0` is only reported. `1` may grow by its slack (10%, or `1:25` for 25%), and that verdict is `grew`, which doesn't block. `2`, the default, needs a price. `3` never grows, not even with a price. `glob=digit` lines up one metric against its kind, and the last match wins: `Caps: q3 k2 n2 b1 t1 t.js*=2`. A line in a set number (Cloudflare's free tier) stays a `limit` in the baseline. `Topes:` is the same line. Only the user writes it.
+- **K6** The user chooses how firm each cap is, in one `Caps:` line under GOALS.md's How we know, like chmod: a digit per kind of number, `q` quality, `k` tokens, `n` counts and loc, `b` bytes, `t` time. `3` hard: the change isn't done until the number is the same or better, or the user agrees it can't get there without lowering quality. `2` semi-hard, the default: growth within its margin (`2:5` for 5%; none unless written) passes, and past it the user chooses to let it pass or have it simplified. `1` semi-hard with a 10% margin unless written (`1:25`). `0` soft: shown, no limit. `glob=digit` lines up one metric against its kind, and the last match wins: `Caps: q3 k2 n2 b1 t1 t.js*=2`. A line in a set number (Cloudflare's free tier) stays a `limit` in the baseline. `Topes:` is the same line. Only the user writes it, and only the user changes what a level means; test/test_done.py pins each one.
 
 ## Work (W)
 How a change goes from an idea to done.
-- **W1** Read the repo, then reply once: the plan (`R1…Rn`, each a result and the test that shows it, what's out, the price) and at most three questions, each with a default. Numbers, not adjectives. The user's yes takes the defaults and freezes the plan (K4).
+- **W1** Read the repo, then reply once: the plan (`R1…Rn`, each a result and the test that shows it, what's out, the numbers it moves) and at most three questions, each with a default. Numbers, not adjectives. The user's yes takes the defaults and freezes the plan (K4).
 - **W2 ✓** Test first: each R's test names it and fails before the code; a fix starts with one that fails on the bug. Never edit an expectation to fit the code. Name a test for what the user sees; its assert message says why.
 - **W3** One goal, about 100 lines besides tests; "for now" is another change. Done is every R green and one real run. A problem the change caused is never deferred.
 

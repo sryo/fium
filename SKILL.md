@@ -1,6 +1,6 @@
 ---
 name: fium
-description: How the user wants every project built, measured and improved. Use when they want to start a new project ("I want to make something that does X"), bring an existing project in line, add benchmarks or cost pricing to one, write or fix a README/GOALS.md/AGENTS.md, judge whether a change made anything cost more (tokens, calls, time, bytes, LOC), or run one goal across several repos (/fium across).
+description: How the user wants every project built, measured and improved. Use when they want to start a new project ("I want to make something that does X"), bring an existing project in line, add benchmarks to one, write or fix a README/GOALS.md/AGENTS.md, decide whether a change is done from what it did to the project's own metrics (tokens, calls, time, bytes, LOC…), or run one goal across several repos (/fium across).
 ---
 
 The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids (P1, R2, K4…). The aim (P) is simple, natural ways of doing things that are cheap on resources and reasonably fast, and that never intrude on the user.
@@ -12,11 +12,11 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
    - purpose
    - never traded
    - goals in priority order
-   - How we know, with a metric and a command for each goal
+   - How we know, with a metric, where it's measured and what `fium done` runs for each goal
    - non-goals
 
    Then the README: why you'd want it and how you use it (R).
-4. Before the first feature, set up `bench/` with a baseline in the run format (K2), so every later change gets priced.
+4. Before the first feature, set up `bench/` with a baseline in the run format (K2), so `fium done` can measure every later change.
 5. A UI repo can add DESIGN.md (templates/DESIGN.md, D1); figma-cdp reads it as the source.
 6. Run `~/Documents/fium/fium check .` until it's clean. Commit with no attribution lines (C1).
 
@@ -30,15 +30,14 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
 
 ## Build a change (W)
 1. Read GOALS.md and the code it touches, then reply once with the plan and the questions (W1).
-2. On yes: tests first and red, code to green, one real run, `fium compare`.
+2. On yes: tests first and red, code to green, one real run, `fium done`.
 3. Report each R, the run and the numbers. Push only on the user's OK.
 
 ## Judge a change
-1. Quote each proposal's price before building (K4).
-2. Run the bench, then `fium compare bench/baseline.json <run> [--noise bench/noise.json] [--since main]`. The base can be a commit instead of a file: compare keeps every clean run it judges in `~/.fium/runs`.
-3. Within its quote, land it with its `Price:` trailers. Inconclusive (exit 3): rerun with more reps. Over: try cheaper ways, then show the user the gap. Never cross a limit.
-4. Before a live run, state its token cost and how many reps you'll buy (L1, L2), predict each verdict (L5), and run only the tasks `fium scope <base>..HEAD` names (L6).
-5. A stale verdict means the run measured another commit or a dirty tree. Commit, then rerun on HEAD (K1, K3).
+1. The plan predicts the numbers the change moves (W1).
+2. Built, run `fium done`: every How we know row, measured where the change left the base branch and now. Add `--costly` for the agent evals only after stating their tokens and reps (L1, L2), predicting each verdict (L5) and running only the tasks `fium scope <base>..HEAD` names (L6).
+3. Exit 1: not done. Fix what broke; a hard cap that grew needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: a semi-hard cap grew past its margin, so simplify it first, then show the user the numbers and ask whether it passes. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K4).
+4. `fium compare <base-run> <run>` judges two runs directly. A stale verdict means the run measured another commit or a dirty tree (K1, K3).
 
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. `fium sleep mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/sleep.json` adds sources, hint tables and gates (`fium sleep --help`). `learn` keeps each fix as a lesson that `replay` checks. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).

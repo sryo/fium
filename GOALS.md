@@ -14,13 +14,13 @@ One way of doing things across every sryo project, all serving the same aim (RUL
 4. **Cheap to read and run.** Agents read the rules every session, and the checker runs on every repo.
 
 ## How we know
-| Goal | Metric | Where |
-|---|---|---|
-| 1 | rules without an id (limit 0) | `bench/run.py` unnamed_rules |
-| 2 | ✓ rules without a test (limit 0) | `bench/run.py` untested_checks |
-| 3 | rule count | `bench/run.py` rules |
-| 3 | repos passing | `./fium check --all ~/Documents` |
-| 4 | bytes an agent reads; checker LOC; check and compare time | `bench/run.py` read_bytes, loc, check_ms, compare_ms |
+| Goal | Metric | Where | Run |
+|---|---|---|---|
+| 1 | rules without an id (limit 0) | `bench/run.py` unnamed_rules | `bench/run.py` |
+| 2 | ✓ rules without a test (limit 0) | `bench/run.py` untested_checks | `bench/run.py` |
+| 3 | rule count | `bench/run.py` rules | `bench/run.py` |
+| 3 | repos with errors | `./fium check --all ~/Documents` | `./fium check --all ~/Documents --json \| python3 -c "import json,sys; print(sum(any(f['level'] == 'error' for f in fs) for fs in json.load(sys.stdin).values()))"` |
+| 4 | bytes an agent reads; checker LOC; check and compare time | `bench/run.py` read_bytes, loc, check_ms, compare_ms | `bench/run.py` |
 
 ## Non-goals
 - Enforcing style inside code. Linters do that per language.

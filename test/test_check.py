@@ -17,9 +17,9 @@ Things.
 1. **Fast.**
 
 ## How we know
-| Goal | Metric | Where |
-|---|---|---|
-| 1 | p50 per call | `bench/baseline.json` |
+| Goal | Metric | Where | Run |
+|---|---|---|---|
+| 1 | p50 per call | `bench/baseline.json` | `make bench` |
 
 ## Non-goals
 - Everything else.
@@ -149,6 +149,18 @@ class Check(unittest.TestCase):
         make(self.root, **{"GOALS.md": GOALS.replace("| `bench/baseline.json` |", "|  |")})
         _, f = check(self.root)
         self.assertIn("G2", rules(f, "error"))
+
+    def test_metric_row_says_how_done_runs_it(self):
+        make(self.root)
+        for goals, why in ((GOALS.replace(" Run |", "").replace("|---|---|---|---|", "|---|---|---|").replace(" `make bench` |", ""), "no Run column"),
+                           (GOALS.replace("`make bench`", ""), "an empty Run cell")):
+            (self.root / "GOALS.md").write_text(goals)
+            _, f = check(self.root)
+            self.assertTrue(any(x["rule"] == "G2" and x["level"] == "warning" and "Run" in x["msg"] for x in f),
+                            f"fium done can't measure a row with {why}")
+        for run in ("live: `du -sk data`", "by hand"):
+            (self.root / "GOALS.md").write_text(GOALS.replace("`make bench`", run))
+            self.assertNotIn("G2", rules(check(self.root)[1]), run)
 
     def test_readme_title_and_opener(self):
         make(self.root, **{"README.md": "# /Demo\n\n`demo` is a thing.\n\n## Install\nx\n"})
