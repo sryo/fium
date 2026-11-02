@@ -25,8 +25,8 @@ class Repo(unittest.TestCase):
             (self.d / name).write_text(text)
         self.git("add", "-A"); self.git("commit", "-q", "-m", msg)
 
-    def fium(self, *args):
-        r = subprocess.run([sys.executable, str(FIUM), "try", *args], capture_output=True, text=True, cwd=self.d, env=self.env)
+    def fium(self, *args, **env):
+        r = subprocess.run([sys.executable, str(FIUM), "try", *args], capture_output=True, text=True, cwd=self.d, env={**self.env, **env})
         return r.returncode, r.stdout + r.stderr
 
 
@@ -156,6 +156,43 @@ class Keep(Repo):
 
     def log(self):
         return (Path(self.tmp.name) / "home" / "runs" / "demo" / "tries.jsonl").read_text().splitlines()
+
+
+# An agent eval: what it spends now varies run to run (TOKENS; the base's run spends 100), and each run is counted.
+EVAL = """import os
+open(os.environ["COUNT"], "a").write("x")
+print(os.environ["TOKENS"] if os.path.realpath(os.getcwd()) == os.environ["HERE"] else "100")
+"""
+
+
+class Confirm(Repo):
+    def setUp(self):
+        super().setUp()
+        self.count = Path(self.tmp.name) / "count"
+        self.commit("bench", **{"GOALS.md": GOALS + "| 1 | tokens per task | eval | costly: `python3 e.py` |\n", "r.py": BENCH,
+                                "e.py": EVAL, "tool.py": "a\nb\nc\n", "calls.txt": "10", "ms.txt": "[100, 100, 100]"})
+        self.git("checkout", "-q", "-b", "loop")
+        self.fium("baseline", "--record", "keep")
+
+    def live(self, *args, tokens="100"):
+        code, out = self.fium(*args, "--costly", COUNT=str(self.count), TOKENS=tokens, HERE=os.path.realpath(self.d))
+        return code, out.strip().splitlines()[-1], out
+
+    def test_a_live_keep_holds_only_if_fresh_reps_agree(self):
+        self.commit("cut", **{"tool.py": "a\nb\n"})
+        code, last, out = self.live("cut")
+        self.assertEqual((code, last), (0, "confirm"), "a keep that rested on an agent eval is measured again before it counts")
+        code, last, out = self.live("--confirm", tokens="150")
+        self.assertEqual((code, last), (1, "discard"), out)
+        self.assertIn("didn't hold on fresh reps", out, "the logged numbers come from the fresh reps, not the lucky run")
+
+    def test_a_confirmed_keeps_runs_are_the_next_attempts_base(self):
+        self.commit("cut", **{"tool.py": "a\nb\n"}); self.live("cut")
+        self.assertEqual(self.live("--confirm")[1], "keep")
+        self.commit("cut more", **{"tool.py": "a\n"})
+        before = len(self.count.read_text())
+        self.assertEqual(self.live("cut more")[1], "confirm")
+        self.assertEqual(len(self.count.read_text()) - before, 1, "the eval ran here only: its base is the confirmed keep's runs")
 
 
 if __name__ == "__main__":

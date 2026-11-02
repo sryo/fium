@@ -46,6 +46,7 @@ def main():
     tr.add_argument("--reason", help="why it was kept or dropped: the numbers that moved")
     tr.add_argument("--target", help="the number this attempt must make better, when it adds rather than cuts")
     tr.add_argument("--costly", action="store_true", help="also run the costly: rows (agent evals)")
+    tr.add_argument("--confirm", action="store_true", help="measure a live keep again; it counts only if fresh reps agree")
     sub.add_parser("learn", help="mine past sessions for failures and keep each fix as a lesson (fium learn --help)")
     sub.add_parser("new", help="start a project from the templates").add_argument("name")
     sc = sub.add_parser("affects", help="which bench tasks a change can move")

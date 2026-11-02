@@ -72,7 +72,8 @@ def at_base(repo, sha, cmds, fresh=()):
     have = json.loads(cache.read_text()) if cache.exists() else {}
     # A costly row runs against the live world (a browser's tabs, a model), so its base is measured now, beside the
     # current tree, never read back from an earlier run.
-    need = [c for c in cmds if c not in have or c in fresh]
+    # A confirmed keep's runs (fium try --confirm) are its measurement, costly ones included.
+    need = [c for c in cmds if c not in have or c in fresh and not have[c].get("confirmed")]
     if need:
         tmp = Path(tempfile.mkdtemp(prefix=f".fium-done-{repo.name}-", dir=repo.parent))
         wt = tmp
@@ -89,7 +90,7 @@ def at_base(repo, sha, cmds, fresh=()):
             shutil.rmtree(tmp, ignore_errors=True)
         cache.parent.mkdir(parents=True, exist_ok=True)
         # A failed measurement isn't kept, so the next done tries it again.
-        cache.write_text(json.dumps({c: x for c, x in have.items() if x["code"] == 0 and c not in fresh}))
+        cache.write_text(json.dumps({c: x for c, x in have.items() if x["code"] == 0 and (c not in fresh or x.get("confirmed"))}))
     return have
 
 
@@ -134,7 +135,8 @@ def done(repo, sha, branch, costly=False, print=print):
         label.setdefault(r["cmd"], r["metric"])
     costly = {r["cmd"] for r in rows if r["kind"] == "costly"}
     base = {c: measure(raw, label[c]) for c, raw in at_base(repo, sha, cmds, costly).items() if c in cmds}
-    here = {c: measure(execute(c, repo), label[c]) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
+    raw = {c: execute(c, repo) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
+    here = {c: measure(x, label[c]) for c, x in raw.items()}
     caps = parse_caps(goals)
     nf = noise_file(repo)
     noise = json.loads(Path(nf).read_text()) if nf else {}
@@ -230,4 +232,4 @@ def done(repo, sha, branch, costly=False, print=print):
     if unmeasured:
         print(f"Couldn't measure: {', '.join(unmeasured)}. It isn't done until they run clean, or the user says they needn't.")
     return {"blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured,
-            "other_model": other_model, "failed": failed, "verdicts": verdicts}
+            "other_model": other_model, "failed": failed, "verdicts": verdicts, "raw": {c: raw[c] for c in costly & set(cmds)}}

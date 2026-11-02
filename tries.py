@@ -7,7 +7,7 @@ from check import git
 from compare import change, globs, inert_globs, runs_dir
 from done import base_branch, done
 
-STATUSES = ("keep", "discard", "crash", "retest", "park")
+STATUSES = ("keep", "discard", "crash", "retest", "park", "confirm")
 # What judges an attempt: an attempt may add to it (a new scorer checks more) but never change it.
 JUDGE = ["bench/*", "test/*", "tests/*", "*noise.json", "*baseline.json"]
 STOP_AFTER = 5
@@ -41,7 +41,7 @@ def since_keep(rows):
     for r in reversed(rows):
         if r["status"] == "keep":
             break
-        n += r["status"] != "retest"
+        n += r["status"] not in ("retest", "confirm")
     return n
 
 
@@ -101,14 +101,39 @@ def attempt(repo, rows, a):
     if head == base:
         sys.exit("HEAD is the last keep: commit the attempt first.")
     files = git(repo, "diff", "--name-only", base, "HEAD").stdout.split()
-    status, reason = outcome(repo, done(repo, base, branch, a.costly), a.target, files)
+    res = done(repo, base, branch, a.costly)
+    status, reason = outcome(repo, res, a.target, files)
     if status == "keep" and anchor != base:
         # Small rises that each pass against the last keep can't add up: the branch is held to where it left main too.
-        since = done(repo, anchor, branch, a.costly, print=lambda *_: None)
+        since = done(repo, anchor, branch, print=lambda *_: None)
         if since["blocked"] or since["hard"] or since["grew"]:
             status, reason = "discard", f"since {branch}: {moved(since)}"
+    if status == "keep" and res["raw"]:
+        # An agent eval's lucky run is how a keep gets picked, so the numbers logged come from fresh reps.
+        status = "confirm"
     row = record(repo, a.idea, status, reason, target=a.target, base=base)
     print(f"{row['idea']}: {reason}")
+    if status == "confirm":
+        print("Measure it again before it counts: fium try --confirm --costly")
+    print(status)
+    sys.exit(0 if status in ("keep", "confirm") else 1)
+
+
+def confirm(repo, rows, a):
+    head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    last = rows[-1] if rows else {}
+    if last.get("status") != "confirm" or last.get("commit") != head:
+        sys.exit("Nothing to confirm: HEAD isn't an attempt fium try marked confirm.")
+    res = done(repo, last["base"], base_branch(repo), True)
+    status, reason = outcome(repo, res, last.get("target"), [])
+    if status == "keep":
+        cache = runs_dir(repo) / f"done-{head}.raw.json"
+        have = json.loads(cache.read_text()) if cache.exists() else {}
+        cache.write_text(json.dumps({**have, **{c: {**x, "confirmed": True} for c, x in res["raw"].items() if x["code"] == 0}}))
+    else:
+        status, reason = "discard", f"didn't hold on fresh reps: {reason}"
+    record(repo, last["idea"], status, reason, target=last.get("target"), base=last["base"])
+    print(f"{last['idea']}: {reason}")
     print(status)
     sys.exit(0 if status == "keep" else 1)
 
@@ -118,6 +143,8 @@ def try_main(a):
     rows = read(repo)
     if judge_changed(repo, rows):
         sys.exit(f"This attempt changes the judge: {', '.join(judge_changed(repo, rows))}. Revert it; an attempt can't change how it's judged (bench/judge).")
+    if a.confirm:
+        return confirm(repo, rows, a)
     if a.idea and not a.record:
         return attempt(repo, rows, a)
     if a.record:
