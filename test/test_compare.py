@@ -106,6 +106,12 @@ class Compare(unittest.TestCase):
         _, v = self.compare(b, r, "--noise", n)
         self.assertEqual(v["t"]["verdict"], "same")
 
+    def test_the_projects_noise_file_is_used_without_naming_it(self):
+        b = self.write("b.json", {"t": metric([100] * 6)})
+        r = self.write("r.json", {"t": metric([115] * 6)})
+        (self.d / "bench").mkdir(); self.write("bench/noise.json", {}, rel={"t": 0.2})
+        self.assertEqual(self.compare(b, r)[1]["t"]["verdict"], "same", "bench/noise.json is the project's measured noise")
+
     def test_limit_is_never_crossed(self):
         b = self.write("b.json", {"bytes": metric([900], kind="bytes")}, limits={"bytes": 1000})
         r = self.write("r.json", {"bytes": metric([1100], kind="bytes")})

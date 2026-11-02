@@ -4,7 +4,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from check import git
-from compare import DEFAULT_REL, cap_for, change, judge, parse_caps, runs_dir
+from compare import DEFAULT_REL, cap_for, change, judge, noise_file, parse_caps, runs_dir
 
 
 def how_we_know(goals):
@@ -122,6 +122,9 @@ def done_main(a):
     base = {c: measure(raw, label[c]) for c, raw in at_base(repo, sha, cmds, costly).items() if c in cmds}
     here = {c: measure(execute(c, repo), label[c]) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
     caps = parse_caps(goals)
+    nf = noise_file(repo)
+    noise = json.loads(Path(nf).read_text()) if nf else {}
+    rel = lambda name: noise.get("rel", {}).get(name, DEFAULT_REL)
     print(f"fium done: {'this tree' if dirty else 'HEAD'} against {branch} at {sha[:7]}")
     # Each row shows under its goal's name from the Goals list, so nobody has to look a number up.
     titles = dict(re.findall(r"^(\d+)\.\s+\*\*(.+?)\.?\*\*", goals.split("## How we know")[0], re.M))
@@ -174,7 +177,7 @@ def done_main(a):
         for name, m in b["metrics"].items():
             if name not in mine:
                 continue
-            v = judge(name, m, h["metrics"].get(name), DEFAULT_REL, {**b["limits"], **h["limits"]}.get(name), 0,
+            v = judge(name, m, h["metrics"].get(name), rel(name), {**b["limits"], **h["limits"]}.get(name), noise.get("abs", {}).get(name, 0),
                       cap_for(name, m.get("kind", "time"), caps))
             # An unchanged number still shows when its row or a Caps override names it: those are the ones watched.
             if v["verdict"] == "same" and len(mine) > 3 and not (
@@ -185,7 +188,7 @@ def done_main(a):
             if v["verdict"] in ("limit", "missing"):
                 blocked.append(name)
             elif v["verdict"] == "worse" or v["verdict"] == "inconclusive" and v["base"] and (
-                    v["run"] / v["base"] > 1 + DEFAULT_REL if m.get("dir", "lower") == "lower" else v["run"] / v["base"] < 1 - DEFAULT_REL):
+                    v["run"] / v["base"] > 1 + rel(name) if m.get("dir", "lower") == "lower" else v["run"] / v["base"] < 1 - rel(name)):
                 # Inconclusive counts only when its median moved past the noise band the wrong way.
                 (hard if v["cap"] == 3 else grew).append(name)
         if same:

@@ -118,6 +118,18 @@ class Done(unittest.TestCase):
         self.assertEqual(code, 3, out)
         self.assertNotIn("grew past", out, "only the costly row keeps it open")
 
+    def test_a_projects_measured_noise_judges_its_numbers_not_a_flat_ten_percent(self):
+        t = lambda xs: R.replace('{n: {"dir": "lower", "kind": "count", "samples": [v]} for n, v in {"rules": 3, "size": 9, "extra": 1}.items()}',
+                                 '{"ms": {"dir": "lower", "kind": "time", "samples": %s}}' % xs)
+        self.write(**{"r.py": t([100, 100, 100])}); self.git("commit", "-qam", "base")
+        self.write(**{"r.py": t([120, 120, 120])})
+        self.assertIn("worse?  ms", self.done()[1], "with no noise file, 20% is past the default band")
+        for where in ("bench", "tests/eval"):
+            (self.d / where).mkdir(parents=True, exist_ok=True)
+            (self.d / where / "noise.json").write_text(json.dumps({"rel": {"ms": 0.3}}))
+            self.assertIn("same?  ms", self.done()[1], f"{where}/noise.json says this number moves 30% between identical runs")
+            (self.d / where / "noise.json").unlink()
+
     def test_fewer_passing_tests_is_a_number_that_grew_the_wrong_way(self):
         self.write(**{"t.py": "print('Ran 12 tests in 0.1s')"}); self.git("commit", "-qam", "12 tests")
         self.write(**{"t.py": "print('Ran 10 tests in 0.1s')"})

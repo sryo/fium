@@ -27,7 +27,7 @@ def main():
     pc = sub.add_parser("compare", help="judge what a change costs: a run against a baseline",
                         epilog="exit 0: nothing worse; 1: worse, limit, missing or stale; 3: inconclusive, rerun with more reps")
     pc.add_argument("base", help="run file, or a commit whose run a past compare kept in ~/.fium/runs"); pc.add_argument("run")
-    pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}}")
+    pc.add_argument("--noise", help="A/A noise file: {rel: {metric: fraction}, abs: {metric: amount}} (default: bench/noise.json, else tests/eval/noise.json)")
     pc.add_argument("--repo", help="repo whose kept runs a commit base names (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
     dn = sub.add_parser("done", help="can this change merge? every How we know row, where it left the base branch and now",

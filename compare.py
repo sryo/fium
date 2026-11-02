@@ -124,8 +124,16 @@ def goals_text(path):
     return p.read_text() if p and p.exists() else ""
 
 
+def noise_file(path):
+    # The project's A/A noise (fium noise): bench/noise.json, else an eval's own tests/eval/noise.json.
+    p = Path(path).resolve()
+    top = Path(git(p if p.is_dir() else p.parent, "rev-parse", "--show-toplevel").stdout.strip() or (p if p.is_dir() else p.parent))
+    return next((str(f) for f in (top / "bench" / "noise.json", top / "tests" / "eval" / "noise.json") if f.exists()), None)
+
+
 def price_compare(base_path, run_path, noise_path=None, repo=None):
     base, run = json.load(open(base_path)), json.load(open(run_path))
+    noise_path = noise_path or noise_file(repo or run_path)
     noise = json.load(open(noise_path)) if noise_path else {}
     rel, abs_ = noise.get("rel", {}), noise.get("abs", {})
     limits = {**base.get("limits", {}), **run.get("limits", {})}
