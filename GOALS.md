@@ -6,6 +6,8 @@ One way of doing things across every sryo project, all serving the same aim (RUL
 ## Never traded
 - A rule never changes a project's behaviour. Migrations are file and doc moves only.
 - Checks report; they never rewrite a repo.
+- The user never decodes. Whatever an agent tells them names things in plain words: goals by name, rules by what they say, each number with what it measures.
+- Done is what the user asked, checked for real. Until then the agent keeps working, without asking.
 
 ## Goals, in priority order
 1. **Every rule is citable.** Each has an id and one line saying why.

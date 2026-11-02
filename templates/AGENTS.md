@@ -6,3 +6,4 @@ How NAME is built and how to work on it. Goals and how they are measured are in 
 ```bash
 command
 ```
+A change is done when `fium done` says so: it measures every How we know row in GOALS.md where the change started and now.

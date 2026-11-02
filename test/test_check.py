@@ -39,7 +39,7 @@ Run it.
 """
 
 
-AGENTS = "# demo\n\n## Test\n```bash\nmake test\n```\n"
+AGENTS = "# demo\n\n## Test\n```bash\nmake test\n```\nA change is done when `fium done` says so.\n"
 
 DESIGN = """---
 version: alpha
@@ -161,6 +161,19 @@ class Check(unittest.TestCase):
         for run in ("live: `du -sk data`", "by hand"):
             (self.root / "GOALS.md").write_text(GOALS.replace("`make bench`", run))
             self.assertNotIn("G2", rules(check(self.root)[1]), run)
+
+    def test_agents_says_to_judge_a_change_with_fium_done(self):
+        make(self.root)
+        plain = AGENTS.replace("A change is done when `fium done` says so.\n", "")
+        (self.root / "AGENTS.md").write_text(plain)
+        f = check(self.root)[1]
+        self.assertTrue(any(x["rule"] == "K4" and "fium done" in x["msg"] for x in f),
+                        "a project with goals tells its agents how to know a change is done")
+        (self.root / "AGENTS.md").write_text(plain + "\n## Bench\nRun `fium compare base.json run.json --since main` with `bench.mjs --house x`.\n")
+        f = check(self.root)[1]
+        self.assertTrue(any(x["rule"] == "K4" and "--since" in x["msg"] for x in f), "the old way is named so it can go")
+        (self.root / "AGENTS.md").write_text(plain + "\n## Bench\nA change is done when `fium done` says so.\n")
+        self.assertNotIn("K4", rules(check(self.root)[1]))
 
     def test_readme_title_and_opener(self):
         make(self.root, **{"README.md": "# /Demo\n\n`demo` is a thing.\n\n## Install\nx\n"})

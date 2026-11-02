@@ -109,6 +109,18 @@ def check_agent_docs(root):
     agents = root / "AGENTS.md"
     if agents.is_file() and not re.search(r"^## Test\b", agents.read_text(), re.M):
         out.append(finding("F7", "error", "AGENTS.md", "no '## Test' section", "add ## Test with the command that runs the tests"))
+    # A project with goals tells its agents how a change is judged done, so no session falls back on an older way.
+    goals = root / "GOALS.md"
+    if agents.is_file() and goals.is_file() and re.search(r"^## How we know", goals.read_text(), re.M):
+        text = agents.read_text()
+        old = sorted(set(re.findall(r"fium compare[^\n]*?(--since|--price)|(--house)\b|^(Price:)", text, re.M)) - {("", "", "")})
+        old = sorted({w for t in old for w in t if w})
+        if old:
+            out.append(finding("K4", "warning", "AGENTS.md", f"judges a change the old way ({', '.join(old)})",
+                               "say a change is done when `fium done` says so, and drop the old way"))
+        elif "fium done" not in text:
+            out.append(finding("K4", "warning", "AGENTS.md", "doesn't say a change is judged with fium done",
+                               "add under ## Bench or ## Test: a change is done when `fium done` says so"))
     for p in [agents, *sorted(root.glob("SKILL.md")), *sorted(root.glob("skills/*/SKILL.md"))]:
         if not p.is_file():
             continue

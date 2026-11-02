@@ -3,7 +3,7 @@ name: fium
 description: How the user wants every project built, measured and improved. Use when they want to start a new project ("I want to make something that does X"), bring an existing project in line, add benchmarks to one, write or fix a README/GOALS.md/AGENTS.md, decide whether a change is done from what it did to the project's own metrics (tokens, calls, time, bytes, LOC…), or run one goal across several repos (/fium across).
 ---
 
-The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids (P1, R2, K4…). The aim (P) is simple, natural ways of doing things that are cheap on resources and reasonably fast, and that never intrude on the user.
+The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1, R2, K4…) in files and commits, never to the user (W4). The aim (P) is simple, natural ways of doing things that are cheap on resources and reasonably fast, and that never intrude on the user.
 
 ## Start a new project
 1. Ask only what you can't infer: who it's for, the job it does, and what it has to beat. Name it in plain lowercase.
@@ -25,18 +25,18 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first and cite rule ids 
    - CLAUDE.md → symlink
    - write GOALS.md from what AGENTS.md and the code already say
    - trim the README to why and how
-2. If it has a bench, make it write the run format (K2) and gate it with `fium compare`. If it has none, add the cheapest one that measures its top goal.
+2. If it has a bench, make it write the run format (K2). If it has none, add the cheapest one that measures its top goal. Give GOALS.md's How we know a Run cell per row (G2), and say in AGENTS.md that a change is done when `fium done` says so (K4).
 3. Leave renames that would break suites (tests/ → test/) for the user to decide.
 
 ## Build a change (W)
 1. Read GOALS.md and the code it touches, then reply once with the plan and the questions (W1).
 2. On yes: tests first and red, code to green, one real run, `fium done`.
-3. Report each R, the run and the numbers. Push only on the user's OK.
+3. Report each R, the run and the numbers in the user's words (W4). Push only on the user's OK.
 
 ## Judge a change
 1. The plan predicts the numbers the change moves (W1).
-2. Built, run `fium done`: every How we know row, measured where the change left the base branch and now. Add `--costly` for the agent evals only after stating their tokens and reps (L1, L2), predicting each verdict (L5) and running only the tasks `fium scope <base>..HEAD` names (L6).
-3. Exit 1: not done. Fix what broke; a hard cap that grew needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: a semi-hard cap grew past its margin, so simplify it first, then show the user the numbers and ask whether it passes. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K4).
+2. Built, always judge it with `fium done`, not `fium compare`: every How we know row, measured where the change left the base branch and now. Add `--costly` for the agent evals only after stating their tokens and reps (L1, L2), predicting each verdict (L5) and running only the tasks `fium scope <base>..HEAD` names (L6).
+3. Exit 1: not done. Fix what broke; a hard cap that grew needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: a semi-hard cap grew past its margin, so simplify it first, then show the user the numbers and ask whether it passes. "Couldn't measure" (a command failed at the base or both sides) keeps it open too: make it run clean, or the user says it needn't. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K4). Tell it under each goal's name, as `fium done` prints it (W4).
 4. `fium compare <base-run> <run>` judges two runs directly. A stale verdict means the run measured another commit or a dirty tree (K1, K3).
 
 ## Learn from past sessions (S)
