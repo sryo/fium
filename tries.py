@@ -4,7 +4,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from check import git
-from compare import change, globs, inert_globs, runs_dir
+from compare import change, globs, runs_dir
 from done import base_branch, done
 
 STATUSES = ("keep", "discard", "crash", "retest", "park", "confirm")
@@ -60,19 +60,11 @@ def judge_changed(repo, rows):
 CUTS = ("loc", "bytes", "count")
 
 
-def unread(repo, files):
-    # Files no measured row reads: inert ones, and those bench/affects.json maps to no task.
-    p = Path(repo) / "bench" / "affects.json"
-    rules = json.loads(p.read_text())["rules"] if p.exists() else []
-    hit = lambda f: next((r["tasks"] for r in rules if any(fnmatch(f, g) for g in r["files"])), None)
-    return all(hit(f) == "none" or hit(f) is None and any(fnmatch(f, g) for g in inert_globs(repo)) for f in files)
-
-
 def moved(res):
     return "; ".join(f"{n}: {change(v.get('base'), v.get('run'))}" for n, v in res["verdicts"].items() if v["verdict"] != "same")
 
 
-def outcome(repo, res, target, files):
+def outcome(res, target, cut=False):
     # The keep rule. A cut (fewer lines, bytes or a count) with nothing worse is kept; an addition must make the
     # target the plan named better. Deleting what nothing measures says nothing is safe, so it's parked.
     vs = res["verdicts"]
@@ -80,13 +72,14 @@ def outcome(repo, res, target, files):
         return "crash", f"{', '.join(res['failed'])} fails now"
     if res["blocked"] or res["hard"] or res["grew"] or res["other_model"]:
         return "discard", moved(res) or "ran on another model"
-    if any(v["verdict"] == "inconclusive" for v in vs.values()):
+    if any(v["verdict"] == "inconclusive" and (v["run"] > v["base"]) == (v.get("dir", "lower") == "lower") for v in vs.values()):
+        # Too close to call and moved the wrong way: more reps before anything is decided.
         return "retest", moved(res)
     better = [n for n, v in vs.items() if v["verdict"] == "better"]
     if any(vs[n]["kind"] in CUTS for n in better) or target in better:
         return "keep", moved(res)
-    if unread(repo, files):
-        return "park", "nothing measured reads " + ", ".join(files)
+    if cut:
+        return "park", "it cut what no number measures; measure it or leave it"
     return "discard", "nothing got better" + (f" ({target} is {vs[target]['verdict']})" if target in vs else "")
 
 
@@ -100,9 +93,10 @@ def attempt(repo, rows, a):
     head = git(repo, "rev-parse", "HEAD").stdout.strip()
     if head == base:
         sys.exit("HEAD is the last keep: commit the attempt first.")
-    files = git(repo, "diff", "--name-only", base, "HEAD").stdout.split()
+    lines = [l.split("\t")[:2] for l in git(repo, "diff", "--numstat", base, "HEAD").stdout.splitlines()]
+    cut = sum(int(d) - int(i) for i, d in lines if i.isdigit() and d.isdigit()) > 0
     res = done(repo, base, branch, a.costly)
-    status, reason = outcome(repo, res, a.target, files)
+    status, reason = outcome(res, a.target, cut)
     if status == "keep" and anchor != base:
         # Small rises that each pass against the last keep can't add up: the branch is held to where it left main too.
         since = done(repo, anchor, branch, print=lambda *_: None)
@@ -125,7 +119,7 @@ def confirm(repo, rows, a):
     if last.get("status") != "confirm" or last.get("commit") != head:
         sys.exit("Nothing to confirm: HEAD isn't an attempt fium try marked confirm.")
     res = done(repo, last["base"], base_branch(repo), True)
-    status, reason = outcome(repo, res, last.get("target"), [])
+    status, reason = outcome(res, last.get("target"))
     if status == "keep":
         cache = runs_dir(repo) / f"done-{head}.raw.json"
         have = json.loads(cache.read_text()) if cache.exists() else {}

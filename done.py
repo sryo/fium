@@ -201,7 +201,7 @@ def done(repo, sha, branch, costly=False, print=print):
                 continue
             v = judge(name, m, h["metrics"].get(name), rel(name), {**b["limits"], **h["limits"]}.get(name), noise.get("abs", {}).get(name, 0),
                       cap_for(name, m.get("kind", "time"), caps))
-            verdicts[name] = {**v, "kind": m.get("kind", "time")}
+            verdicts[name] = {**v, "kind": m.get("kind", "time"), "dir": m.get("dir", "lower")}
             # An unchanged number still shows when its row or a Caps override names it: those are the ones watched.
             if v["verdict"] == "same" and len(mine) > 3 and not (
                     named(name, r["text"]) or any(fnmatch(name, g) for g, _ in caps[1])):

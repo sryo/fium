@@ -100,7 +100,8 @@ print("run.json")
 class Keep(Repo):
     def setUp(self):
         super().setUp()
-        self.commit("bench", **{"GOALS.md": GOALS, "r.py": BENCH, "tool.py": "a\nb\nc\n", "calls.txt": "10", "ms.txt": "[100, 100, 100]"})
+        self.commit("bench", **{"GOALS.md": GOALS, "r.py": BENCH, "tool.py": "a\nb\nc\n", "calls.txt": "10", "ms.txt": "[100, 100, 100]",
+                                "README.md": "why\nhow\nmore\n"})
         self.git("checkout", "-q", "-b", "loop")
         self.fium("baseline", "--record", "keep")
 
@@ -128,17 +129,19 @@ class Keep(Repo):
         self.assertEqual((code, last), (0, "keep"), out)
 
     def test_cutting_what_nothing_measures_is_parked_not_kept(self):
-        code, last, out = self.attempt("trim the readme", **{"README.md": "short\n"})
+        code, last, out = self.attempt("trim the readme", **{"README.md": "why\nhow\n"})
         self.assertEqual(last, "park", "nothing measured read it, so nothing says the cut is safe")
+        code, last, out = self.attempt("trim the readme and time looks better", **{"README.md": "why\n", "ms.txt": "[100, 140, 80, 120, 90, 110]"})
+        self.assertEqual(last, "park", "a number too close to call that moved the right way doesn't need a retest")
 
     def test_a_command_that_now_fails_is_a_crash(self):
         code, last, out = self.attempt("break it", **{"calls.txt": "ten"})
         self.assertEqual((code, last), (1, "crash"), out)
 
-    def test_a_noisy_number_too_close_to_call_is_retested(self):
+    def test_a_noisy_number_too_close_to_call_that_got_worse_is_retested(self):
         self.commit("noisy", **{"ms.txt": "[100, 140, 80, 120, 90, 110]"}); self.fium("noisy base", "--record", "keep")
-        code, last, out = self.attempt("cut and maybe faster", **{"tool.py": "a\nb\n", "ms.txt": "[80, 133, 68, 120, 81, 97]"})
-        self.assertEqual(last, "retest", "an inconclusive number needs more reps before a keep")
+        code, last, out = self.attempt("cut and maybe slower", **{"tool.py": "a\nb\n", "ms.txt": "[108, 160, 60, 135, 95, 118]"})
+        self.assertEqual(last, "retest", out + "\nan inconclusive number that moved the wrong way needs more reps before a keep")
 
     def test_small_rises_that_pass_one_at_a_time_cant_add_up(self):
         code, last, out = self.attempt("cut a", "--target", "calls", **{"calls.txt": "9", "ms.txt": "[108, 108, 108]"})
