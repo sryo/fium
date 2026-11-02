@@ -126,8 +126,10 @@ def goals_text(path):
 
 def noise_file(path):
     # The project's A/A noise (fium noise): bench/noise.json, else an eval's own tests/eval/noise.json.
+    # Found by walking up to the checkout's top, not by asking git: compare runs on every attempt.
     p = Path(path).resolve()
-    top = Path(git(p if p.is_dir() else p.parent, "rev-parse", "--show-toplevel").stdout.strip() or (p if p.is_dir() else p.parent))
+    p = p if p.is_dir() else p.parent
+    top = next((d for d in (p, *p.parents) if (d / ".git").exists()), p)
     return next((str(f) for f in (top / "bench" / "noise.json", top / "tests" / "eval" / "noise.json") if f.exists()), None)
 
 
