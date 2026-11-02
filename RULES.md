@@ -44,7 +44,7 @@ A README is for someone deciding whether they want this, and then using it. It s
 - **L3** Spend live runs sparingly. Read the transcripts you already have first, batch fixes into one run, and give routing-only changes a single smoke rep.
 - **L4** After 5 runs in a row with no keep, stop or change approach.
 - **L5** Before a run, predict each metric's verdict and name the reading that would prove the change wrong. When a verdict surprises you, check the bench before the code: its noise, its baseline, its commit.
-- **L6** Run only the tasks `fium scope <base>..HEAD` names. It reads `bench/affects.json` (`{"rules": [{"files": [globs], "tasks": [...] | "*" | "none"}]}`, first match wins). A changed file no rule matches means every task, unless it is inert.
+- **L6** Run only the tasks `fium affects <base>..HEAD` names. It reads `bench/affects.json` (`{"rules": [{"files": [globs], "tasks": [...] | "*" | "none"}]}`, first match wins). A changed file no rule matches means every task, unless it is inert.
 
 ## Cost (K)
 A change is done when the user has seen what it did to each of the project's own metrics and says it can merge. `fium done` measures them; something that broke or crossed a limit blocks it.
@@ -72,7 +72,7 @@ How a project learns from its own sessions, taken from figma-cdp's sleep loop.
 - **S1** Learn from what agents actually did, not from what the docs imagine they do. Periodically read past transcripts for failed calls, retries, stalls, heavy reads and the user's corrections, and weight the corrections highest. Fix the top few, plus one or two rare ones.
 - **S2** Every fix lands as a check that would fail without it: a test, an error text the code must print, or a rule a doc must keep. That way a later trim or rewrite can't silently forget it.
 - **S3** Put the fix where the agent is when it fails. An error message that names the fix beats a line in a doc. An error or empty state a user sees says what happened and what to do next. When a failure comes back after its fix, move the fix closer to that point.
-- **S4** A lesson says what to do, never only "X doesn't work". Drop hints and lessons that never fire. Environment trouble (sleep, lock, permissions) belongs to the harness, not to a project lesson.
+- **S4** A lesson says what to do, never only "X doesn't work". Drop hints and lessons that never fire. Environment trouble (Mac sleep, lock, permissions) belongs to the harness, not a project lesson.
 
 ## Commits (C)
 - **C1** Commit messages say what landed, in the repo's own style: read its recent `git log` and match how subjects are phrased and how long bodies run. They carry no attribution lines.

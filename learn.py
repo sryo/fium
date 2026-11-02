@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""fium sleep: mine past sessions for failures, rank them, and keep each landed fix as a lesson replay checks.
+"""fium learn: mine past sessions for failures, rank them, and keep each landed fix as a lesson replay checks.
 
-  sleep.py [--repo DIR] mine|digest [--stale]|learn|replay|check
-Config: <repo>/bench/sleep.json. State and signals: $FIUM_HOME (~/.fium)/sleep/<repo>/.
+  fium learn [--repo DIR] mine|digest [--stale]|keep|replay|check
+Config: <repo>/bench/learn.json. State and signals: $FIUM_HOME (~/.fium)/learn/<repo>/.
   projects   ~/.claude/projects dirs to mine, by name substring (default: the repo's name)
   tools      regex over tool names: mine only matching calls and the corrections that follow them,
              for a tool other projects call (e.g. "^mcp__perch__"); each error still names the next call
@@ -38,13 +38,13 @@ def setup(repo):
     global REPO, CFG, LESSONS, HOME
     REPO = os.path.abspath(repo or subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip() or ".")
     try:
-        with open(os.path.join(REPO, "bench", "sleep.json")) as f:
+        with open(os.path.join(REPO, "bench", "learn.json")) as f:
             CFG = json.load(f)
     except OSError:
         CFG = {}
     CFG.setdefault("projects", [os.path.basename(REPO)])
-    LESSONS = os.environ.get("FIUM_SLEEP_LESSONS") or at(CFG.get("lessons", "bench/lessons.jsonl"))
-    HOME = os.path.join(os.environ.get("FIUM_HOME") or os.path.expanduser("~/.fium"), "sleep", os.path.basename(REPO))
+    LESSONS = os.environ.get("FIUM_LEARN_LESSONS") or at(CFG.get("lessons", "bench/lessons.jsonl"))
+    HOME = os.path.join(os.environ.get("FIUM_HOME") or os.path.expanduser("~/.fium"), "learn", os.path.basename(REPO))
 
 
 def at(p):
@@ -52,7 +52,7 @@ def at(p):
 
 
 def die(msg, code=1):
-    print(f"sleep: {msg}", file=sys.stderr)
+    print(f"learn: {msg}", file=sys.stderr)
     sys.exit(code)
 
 
@@ -249,7 +249,7 @@ def cmd_mine(a):
     elif a.since:
         since = parse_ts(a.since if "T" in a.since else a.since + "T00:00:00+00:00")
     else:
-        last = state().get("last_sleep")
+        last = state().get("last_run")
         since = parse_ts(last) if last else datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=14)
     signals = [s for p in transcripts(a.source or sources(), since) for s in mine_file(p, since)]
     signals.sort(key=lambda s: s.get("ts") or "")
@@ -368,7 +368,7 @@ def cmd_digest(a):
             print(f"- {e.get('session', '')} {e.get('ts', '')}: {e.get('text') or e.get('call', '')}")
     if a.mark:
         os.makedirs(HOME, exist_ok=True)
-        st = dict(state(), last_sleep=datetime.datetime.now(datetime.timezone.utc).isoformat())
+        st = dict(state(), last_run=datetime.datetime.now(datetime.timezone.utc).isoformat())
         with open(os.path.join(HOME, "state.json"), "w") as f:
             json.dump(st, f, indent=2)
 
@@ -465,7 +465,7 @@ def cmd_stale(a):
         print(f"- {place} {kind} {lid} ({file})")
 
 
-def cmd_learn(a):
+def cmd_keep(a):
     if a.kind not in ("hint", "doc"):
         die(f"unknown kind {a.kind}: hint or doc", 2)
     if any(r["id"] == a.id for r in lessons()):
@@ -479,14 +479,14 @@ def cmd_learn(a):
     tables = helper_tables()
     failure = forgotten(row, tables)
     if failure:
-        die(f"no fix in place: {failure}; land the fix (test first), then learn it", 2)
+        die(f"no fix in place: {failure}; land the fix (test first), then keep it", 2)
     for text in guarded(row, tables):
         if NEGATIVE.search(text) and not WAY_THROUGH.search(text):
             die(f"negative claim with no way through: {text.strip()!r}; say what to do instead", 2)
     os.makedirs(os.path.dirname(os.path.abspath(LESSONS)), exist_ok=True)
     with open(LESSONS, "a") as f:
         f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    print(f"learned {a.id}")
+    print(f"kept {a.id}")
 
 
 def doc_body(l):
@@ -501,7 +501,7 @@ def forgotten(l, tables):
     """Why lesson l no longer holds, or None."""
     if l["kind"] == "hint":
         if not tables:
-            return "no hints files in bench/sleep.json"
+            return "no hints files in bench/learn.json"
         for h, table in tables.items():
             got = hint_for(table, l["error"])
             if not got or l["expect"] not in got:
@@ -546,7 +546,7 @@ def cmd_check(a):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(prog="fium learn", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", help="the project (default: the current directory's git toplevel)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("mine")
@@ -556,7 +556,7 @@ def main():
     p.add_argument("signals", nargs="?"); p.add_argument("--top", type=int, default=12); p.add_argument("--explore", type=int, default=3)
     p.add_argument("--seed", type=int, default=0); p.add_argument("--json"); p.add_argument("--mark", action="store_true")
     p.add_argument("--stale", action="store_true"); p.add_argument("--source", action="append")
-    p = sub.add_parser("learn")
+    p = sub.add_parser("keep")
     p.add_argument("--id", required=True); p.add_argument("--kind", required=True); p.add_argument("--expect", required=True)
     for k in ("--error", "--file", "--signature", "--evidence"):
         p.add_argument(k)
@@ -565,7 +565,7 @@ def main():
     p.add_argument("--candidate"); p.add_argument("--baseline"); p.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     setup(a.repo)
-    {"mine": cmd_mine, "digest": cmd_digest, "learn": cmd_learn, "replay": cmd_replay, "check": cmd_check}[a.cmd](a)
+    {"mine": cmd_mine, "digest": cmd_digest, "keep": cmd_keep, "replay": cmd_replay, "check": cmd_check}[a.cmd](a)
 
 
 if __name__ == "__main__":

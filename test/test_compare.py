@@ -281,8 +281,8 @@ class Stale(unittest.TestCase):
         self.assertEqual(code, 0)
 
 
-class Scope(unittest.TestCase):
-    def test_scope_unions_tasks_and_fails_safe(self):
+class Affects(unittest.TestCase):
+    def test_affects_unions_tasks_and_fails_safe(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t)
             g = lambda *a: subprocess.run(["git", "-C", t, *a], capture_output=True, check=True)
@@ -294,11 +294,17 @@ class Scope(unittest.TestCase):
                 {"files": ["bench/*"], "tasks": "none"}, {"files": ["SKILL.md"], "tasks": "*"}]}))
             (d / "lib").mkdir(); (d / "lib" / "x.js").write_text("x"); (d / "cap.py").write_text("x"); (d / "README.md").write_text("x")
             g("add", "-A"); g("commit", "-q", "-m", "c")
-            sc = lambda: json.loads(run("scope", "--json", "base..HEAD", "--repo", t)[1])
+            sc = lambda: json.loads(run("affects", "--json", "base..HEAD", "--repo", t)[1])
             self.assertEqual(sc()["tasks"], ["a", "b", "c"])
             (d / "other.py").write_text("x"); g("add", "-A"); g("commit", "-q", "-m", "d")
             self.assertEqual(sc()["tasks"], "*")
             self.assertEqual(sc()["why"]["other.py"], "*")
+
+    def test_old_names_are_unknown_commands(self):
+        for old in ("scope", "sleep"):
+            r = subprocess.run([sys.executable, str(FIUM), old, "--help"], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 2, old)
+            self.assertIn("invalid choice", r.stderr, old)
 
 
 if __name__ == "__main__":

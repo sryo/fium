@@ -49,7 +49,7 @@ TRANSCRIPT = [
 FONT_SIG = "in set_characters: cannot write to node with unloaded font <s>"
 
 
-class Sleep(unittest.TestCase):
+class Learn(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.home = os.path.join(self.tmp, "fium")
@@ -78,24 +78,24 @@ class Sleep(unittest.TestCase):
 
     def config(self, cfg):
         os.makedirs(os.path.join(self.repo, "bench"), exist_ok=True)
-        Path(self.repo, "bench", "sleep.json").write_text(json.dumps(cfg))
+        Path(self.repo, "bench", "learn.json").write_text(json.dumps(cfg))
 
     def write(self, path, rows):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
             f.writelines(json.dumps(r) + "\n" for r in rows)
 
-    def sleep(self, *args, code=0, lessons=None, env=None):
+    def learn(self, *args, code=0, lessons=None, env=None):
         env = {**os.environ, "FIUM_HOME": self.home, **(env or {})}
         if lessons is not None:
-            env["FIUM_SLEEP_LESSONS"] = lessons
-        r = subprocess.run([sys.executable, str(FIUM), "sleep", "--repo", self.repo, *args], capture_output=True, text=True, env=env, cwd=self.tmp)
+            env["FIUM_LEARN_LESSONS"] = lessons
+        r = subprocess.run([sys.executable, str(FIUM), "learn", "--repo", self.repo, *args], capture_output=True, text=True, env=env, cwd=self.tmp)
         self.assertEqual(r.returncode, code, r.stdout + r.stderr)
         return r.stdout + r.stderr
 
     def mine(self, *extra):
         out = os.path.join(self.tmp, "signals.jsonl")
-        self.sleep("mine", "--source", os.path.join(self.tmp, "projects"), "--source", self.journal, "--out", out, *extra)
+        self.learn("mine", "--source", os.path.join(self.tmp, "projects"), "--source", self.journal, "--out", out, *extra)
         return [json.loads(l) for l in Path(out).read_text().splitlines()]
 
     def lessons(self, rows):
@@ -136,7 +136,7 @@ class Sleep(unittest.TestCase):
         self.write(os.path.join(run, "r1_tx", "layout-1", "journal", "2026-10-30.jsonl"), [
             {"ts": "2026-10-30T08:00:00-0300", "rid": "j1", "tool": "batch.py", "ok": False, "error": "Error: in appendChild: oops"}])
         out = os.path.join(self.tmp, "eval.jsonl")
-        self.sleep("mine", "--all", "--source", run, "--out", out)
+        self.learn("mine", "--all", "--source", run, "--out", out)
         errs = {s["sig"]: s for s in map(json.loads, Path(out).read_text().splitlines()) if s["kind"] == "error"}
         self.assertEqual(sorted(errs), ["error: in appendchild: oops", "keyerror: <s>",
                                         "request <hex> is still running in the page; helper.py --recover <hex>"])
@@ -153,9 +153,9 @@ class Sleep(unittest.TestCase):
         projects = os.path.join(self.tmp, "home", ".claude", "projects")
         self.write(os.path.join(projects, "-Users-me-Documents-zebra", "Z.jsonl"), TRANSCRIPT)
         self.write(os.path.join(projects, "-Users-me-Documents-other", "O.jsonl"), TRANSCRIPT)
-        self.sleep("mine", "--since", "2026-10-01", env={"HOME": os.path.join(self.tmp, "home")})
-        days = os.listdir(os.path.join(self.home, "sleep", "demo"))
-        sig = [json.loads(l) for l in Path(self.home, "sleep", "demo", days[0], "signals.jsonl").read_text().splitlines()]
+        self.learn("mine", "--since", "2026-10-01", env={"HOME": os.path.join(self.tmp, "home")})
+        days = os.listdir(os.path.join(self.home, "learn", "demo"))
+        sig = [json.loads(l) for l in Path(self.home, "learn", "demo", days[0], "signals.jsonl").read_text().splitlines()]
         self.assertEqual({s["project"] for s in sig}, {"zebra"})
         self.assertEqual(sum(s["kind"] == "error" for s in sig), 3)  # 2 from the zebra transcript, 1 from the journal
 
@@ -176,16 +176,16 @@ class Sleep(unittest.TestCase):
         ])
         os.remove(os.path.join(self.src, "S1", "subagents", "agent-w.jsonl"))
         out = os.path.join(self.tmp, "signals.jsonl")
-        self.sleep("mine", "--all", "--source", self.src, "--out", out)
+        self.learn("mine", "--all", "--source", self.src, "--out", out)
         sig = [json.loads(l) for l in Path(out).read_text().splitlines()]
         errs = [s for s in sig if s["kind"] == "error"]
         self.assertEqual([(s["shape"], s["next"]) for s in errs], [("click", "osascript"), ("click", "activate_tab")])
         self.assertEqual([s["text"] for s in sig if s["kind"] == "correction"], ["stop clicking"])
         self.assertEqual([(s["shape"], s["value"]) for s in sig if s["kind"] == "retry"], [("click", 2)])
-        self.sleep("digest", out, "--json", os.path.join(self.tmp, "d.json"), lessons=self.lessons([]))
+        self.learn("digest", out, "--json", os.path.join(self.tmp, "d.json"), lessons=self.lessons([]))
         click = next(c for c in json.loads(Path(self.tmp, "d.json").read_text())["all"] if c["kind"] == "error")
         self.assertEqual(click["next"], {"osascript": 1, "activate_tab": 1})
-        self.assertIn("tools", self.sleep("--help"))
+        self.assertIn("tools", self.learn("--help"))
 
     def test_mine_reads_a_json_result_by_its_own_error(self):
         self.write(os.path.join(self.src, "S1.jsonl"), [
@@ -200,7 +200,7 @@ class Sleep(unittest.TestCase):
             result("j4", "2026-10-30T10:00:07Z", json.dumps({"ok": True, "value": 1}))])
         os.remove(os.path.join(self.src, "S1", "subagents", "agent-w.jsonl"))
         out = os.path.join(self.tmp, "signals.jsonl")
-        self.sleep("mine", "--all", "--source", self.src, "--out", out)
+        self.learn("mine", "--all", "--source", self.src, "--out", out)
         self.assertEqual([s["sig"] for s in map(json.loads, Path(out).read_text().splitlines()) if s["kind"] == "error"],
                          ["no matching option after open", "cannot read properties of null (reading <s>)", "file_upload: ok false"])
 
@@ -210,7 +210,7 @@ class Sleep(unittest.TestCase):
         lessons = self.lessons([{"id": "fill-hint", "kind": "hint", "signature": "error: in set_layoutsizinghorizontal: fill can only be set on children of auto-layout frames",
                                  "error": "FILL can only be set on children of auto-layout", "expect": "appendChild", "added": "2026-10-29"}])
         out = os.path.join(self.tmp, "digest.json")
-        self.sleep("digest", sigs, "--json", out, "--top", "3", "--explore", "0", lessons=lessons)
+        self.learn("digest", sigs, "--json", out, "--top", "3", "--explore", "0", lessons=lessons)
         d = json.loads(Path(out).read_text())
         top = d["clusters"]
         # The consolidated lesson's signal came back after the lesson was added: a relapse ranks first.
@@ -220,7 +220,7 @@ class Sleep(unittest.TestCase):
         self.assertEqual(font["target"], "agent-ignored-doc: move the rule to the point of use (hint fires but the call repeats)")
         self.assertEqual((len(font["evidence"]), font["evidence"][0]["session"]), (3, "S1"))
         self.assertEqual(len(top), 3)
-        self.assertIn("| relapse |", self.sleep("digest", sigs, "--top", "3", "--explore", "0", lessons=lessons))
+        self.assertIn("| relapse |", self.learn("digest", sigs, "--top", "3", "--explore", "0", lessons=lessons))
 
     def test_digest_marks_closed_known_cases_as_ledger(self):
         self.mine("--since", "2026-10-01")
@@ -229,7 +229,7 @@ class Sleep(unittest.TestCase):
         Path(self.repo, "open.jsonl").write_text(json.dumps({"signature": "slow: helper.py", "status": "open"}) + "\n")
         self.config({"projects": ["demo"], "hints": ["helper.py"], "known": ["ledger", "open.jsonl"]})
         out = os.path.join(self.tmp, "digest.json")
-        self.sleep("digest", os.path.join(self.tmp, "signals.jsonl"), "--json", out, lessons=self.lessons([]))
+        self.learn("digest", os.path.join(self.tmp, "signals.jsonl"), "--json", out, lessons=self.lessons([]))
         status = {c["sig"]: c["status"] for c in json.loads(Path(out).read_text())["all"]}
         self.assertEqual((status["interrupted"], status["slow: helper.py"]), ("ledger", "new"))
 
@@ -237,8 +237,8 @@ class Sleep(unittest.TestCase):
         self.mine("--since", "2026-10-01")
         sigs, lessons = os.path.join(self.tmp, "signals.jsonl"), self.lessons([])
         a, b = (os.path.join(self.tmp, n) for n in ("a.json", "b.json"))
-        self.sleep("digest", sigs, "--json", a, "--top", "1", "--explore", "2", "--seed", "7", lessons=lessons)
-        self.sleep("digest", sigs, "--json", b, "--top", "1", "--explore", "2", "--seed", "7", lessons=lessons)
+        self.learn("digest", sigs, "--json", a, "--top", "1", "--explore", "2", "--seed", "7", lessons=lessons)
+        self.learn("digest", sigs, "--json", b, "--top", "1", "--explore", "2", "--seed", "7", lessons=lessons)
         da, db = json.loads(Path(a).read_text()), json.loads(Path(b).read_text())
         self.assertEqual(da["clusters"], db["clusters"])
         self.assertEqual([c["pick"] for c in da["clusters"]], ["top", "explore", "explore"])
@@ -247,35 +247,35 @@ class Sleep(unittest.TestCase):
         ok = self.lessons([
             {"id": "font", "kind": "hint", "error": 'Error: in set_characters: Cannot write to node with unloaded font "Inter"', "expect": "loadFontAsync"},
             {"id": "skill-rule", "kind": "doc", "file": "SKILL.md", "expect": "helper.py"}])
-        self.assertIn("2 lessons hold", self.sleep("replay", lessons=ok))
+        self.assertIn("2 lessons hold", self.learn("replay", lessons=ok))
         bad = self.lessons([
             {"id": "gone", "kind": "hint", "error": "Error: something nobody hints", "expect": "anything"},
             {"id": "deleted-rule", "kind": "doc", "file": "SKILL.md", "expect": "a rule nobody wrote \\d{9}"}])
-        out = self.sleep("replay", code=1, lessons=bad)
+        out = self.learn("replay", code=1, lessons=bad)
         self.assertIn("gone", out)
         self.assertIn("deleted-rule", out)
 
     def test_learn_appends_a_lesson_that_replay_then_holds(self):
         path = self.lessons([])
-        self.sleep("learn", "--id", "font", "--kind", "hint", "--error", 'unloaded font "X"', "--expect", "loadFontAsync",
+        self.learn("keep", "--id", "font", "--kind", "hint", "--error", 'unloaded font "X"', "--expect", "loadFontAsync",
                    "--signature", FONT_SIG, "--evidence", "S1 2026-10-30T10:00:06Z", lessons=path)
         rows = [json.loads(l) for l in Path(path).read_text().splitlines()]
         self.assertEqual(rows[0]["id"], "font")
         self.assertTrue(rows[0]["added"])
-        self.assertIn("unknown kind", self.sleep("learn", "--id", "x", "--kind", "vibe", "--expect", "y", code=2, lessons=path))
-        self.assertIn("already", self.sleep("learn", "--id", "font", "--kind", "hint", "--error", "e", "--expect", "y", code=2, lessons=path))
-        self.assertIn("1 lessons hold", self.sleep("replay", lessons=path))
+        self.assertIn("unknown kind", self.learn("keep", "--id", "x", "--kind", "vibe", "--expect", "y", code=2, lessons=path))
+        self.assertIn("already", self.learn("keep", "--id", "font", "--kind", "hint", "--error", "e", "--expect", "y", code=2, lessons=path))
+        self.assertIn("1 lessons hold", self.learn("replay", lessons=path))
 
     def test_learn_refuses_a_lesson_whose_fix_has_not_landed(self):
         path = self.lessons([])
-        out = self.sleep("learn", "--id", "x", "--kind", "hint", "--error", "Error: something nobody hints", "--expect", "anything",
+        out = self.learn("keep", "--id", "x", "--kind", "hint", "--error", "Error: something nobody hints", "--expect", "anything",
                          code=2, lessons=path)
         self.assertIn("no fix in place", out)
         doc = os.path.join(self.tmp, "doc.md")
         Path(doc).write_text("# Rules\n- Load every font before writing text.\n")
-        self.assertIn("no fix in place", self.sleep("learn", "--id", "y", "--kind", "doc", "--file", doc, "--expect", "a rule nobody wrote",
+        self.assertIn("no fix in place", self.learn("keep", "--id", "y", "--kind", "doc", "--file", doc, "--expect", "a rule nobody wrote",
                                                     code=2, lessons=path))
-        self.assertIn("learned", self.sleep("learn", "--id", "z", "--kind", "doc", "--file", doc, "--expect", "Load every font", lessons=path))
+        self.assertIn("kept", self.learn("keep", "--id", "z", "--kind", "doc", "--file", doc, "--expect", "Load every font", lessons=path))
 
     def test_learn_refuses_a_negative_claim_and_accepts_one_that_names_the_way_through(self):
         path = self.lessons([])
@@ -284,9 +284,9 @@ class Sleep(unittest.TestCase):
                              "- figma.getVariableById is broken.\n"
                              "- The sync API doesn't work on dynamic pages; use getNodeByIdAsync instead.\n")
         for i, expect in enumerate(("Screenshots in Arc", "getVariableById is broken")):
-            out = self.sleep("learn", "--id", f"neg{i}", "--kind", "doc", "--file", doc, "--expect", expect, code=2, lessons=path)
+            out = self.learn("keep", "--id", f"neg{i}", "--kind", "doc", "--file", doc, "--expect", expect, code=2, lessons=path)
             self.assertIn("negative claim", out)
-        self.assertIn("learned", self.sleep("learn", "--id", "ok", "--kind", "doc", "--file", doc, "--expect", "sync API", lessons=path))
+        self.assertIn("kept", self.learn("keep", "--id", "ok", "--kind", "doc", "--file", doc, "--expect", "sync API", lessons=path))
 
     def test_digest_stale_lists_hints_and_lessons_that_never_fired_with_their_place(self):
         # The transcript's font errors fire the unloaded-font row, the journal fires the FILL row and
@@ -304,7 +304,7 @@ class Sleep(unittest.TestCase):
             {"id": "never", "kind": "hint", "error": "must be in the same page as the parent", "expect": "two pages",
              "signature": "error: must be in the same page as the parent"},
             {"id": "nosig", "kind": "doc", "file": "SKILL.md", "expect": "helper"}])
-        out = self.sleep("digest", "--stale", "--source", os.path.join(self.tmp, "projects"), "--source", self.journal, lessons=path)
+        out = self.learn("digest", "--stale", "--source", os.path.join(self.tmp, "projects"), "--source", self.journal, lessons=path)
         never = out.split("## Never fired", 1)[1].split("##", 1)[0]
         self.assertRegex(never, r"helper\.py:\d+ .*must be in the same page")
         self.assertRegex(never, r"batch\.py:\d+ .*must be in the same page")
@@ -315,10 +315,10 @@ class Sleep(unittest.TestCase):
         self.assertRegex(out.split("## Unmeasured", 1)[1], r"lessons\.jsonl:3 .*nosig")
 
     def test_check_dry_run_lists_the_gates(self):
-        out = self.sleep("check", "--dry-run", "--candidate", "cand.json")
+        out = self.learn("check", "--dry-run", "--candidate", "cand.json")
         for gate in ("python3 -m unittest", "test/budget.py", "replay", "compare bench/baseline.json cand.json"):
             self.assertIn(gate, out)
-        out = self.sleep("check", "--dry-run")
+        out = self.learn("check", "--dry-run")
         self.assertIn("replay", out)
         self.assertNotIn("compare bench", out)
 

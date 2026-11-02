@@ -6,14 +6,14 @@ from pathlib import Path
 HOME = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOME))
 from check import check, own_checks  # noqa: E402
-from compare import DEFAULT_REL, compare_main, noise, scope_main  # noqa: E402
+from compare import DEFAULT_REL, compare_main, noise, affects_main  # noqa: E402
 from done import done_main  # noqa: E402
 from repos import grep_main, new, status_main, survey_main  # noqa: E402
 
 
 def main():
-    if sys.argv[1:2] == ["sleep"]:
-        os.execv(sys.executable, [sys.executable, str(HOME / "sleep.py"), *sys.argv[2:]])
+    if sys.argv[1:2] == ["learn"]:
+        os.execv(sys.executable, [sys.executable, str(HOME / "learn.py"), *sys.argv[2:]])
     ap = argparse.ArgumentParser(prog="fium")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check", help="check a project against the ✓ rules in RULES.md; exit 1 on an error")
@@ -39,12 +39,12 @@ def main():
     ns.add_argument("--min", type=float, default=DEFAULT_REL, help="the least rel any metric gets (default 0.10)")
     ns.add_argument("--abs", action="append", default=[], metavar="METRIC=AMOUNT",
                     help="a move this small is same; METRIC may be a glob, a later one wins")
-    sub.add_parser("sleep", help="mine past sessions for failures and keep each fix as a lesson (fium sleep --help)")
+    sub.add_parser("learn", help="mine past sessions for failures and keep each fix as a lesson (fium learn --help)")
     sub.add_parser("new", help="start a project from the templates").add_argument("name")
-    sc = sub.add_parser("scope", help="which bench tasks a change can move")
+    sc = sub.add_parser("affects", help="which bench tasks a change can move")
     sc.add_argument("revs", help="base..HEAD")
     sc.add_argument("--repo", default=".")
-    sc.add_argument("--affects", help="rules file (default: <repo>/bench/affects.json)")
+    sc.add_argument("--rules", help="rules file (default: <repo>/bench/affects.json)")
     sc.add_argument("--json", action="store_true")
     st = sub.add_parser("status", help="each repo's base branch, dirty files, other branches and worktrees; never writes")
     st.add_argument("path", nargs="?", default="~/Documents")
@@ -59,8 +59,8 @@ def main():
         return grep_main(a)
     if a.cmd == "new":
         return new(a.name)
-    if a.cmd == "scope":
-        return scope_main(a)
+    if a.cmd == "affects":
+        return affects_main(a)
     if a.cmd == "done":
         return done_main(a)
     if a.cmd == "compare":

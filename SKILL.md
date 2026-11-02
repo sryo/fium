@@ -35,12 +35,12 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 
 ## Judge a change
 1. The plan predicts the numbers the change moves (W1).
-2. Built, always judge it with `fium done`, not `fium compare`: every How we know row, measured where the change left the base branch and now. Add `--costly` for the agent evals only after stating their tokens and reps (L1, L2), predicting each verdict (L5) and running only the tasks `fium scope <base>..HEAD` names (L6).
+2. Built, always judge it with `fium done`, not `fium compare`: every How we know row, measured where the change left the base branch and now. Add `--costly` for the agent evals only after stating their tokens and reps (L1, L2), predicting each verdict (L5) and running only the tasks `fium affects <base>..HEAD` names (L6).
 3. Exit 1: not done. Fix what broke; a hard cap that grew needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: a semi-hard cap grew past its margin, so simplify it first, then show the user the numbers and ask whether it passes. "Couldn't measure" (a command failed at the base or both sides) keeps it open too: make it run clean, or the user says it needn't. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K4). Tell it under each goal's name, as `fium done` prints it (W4).
 4. `fium compare <base-run> <run>` judges two runs directly. A stale verdict means the run measured another commit or a dirty tree (K1, K3).
 
 ## Learn from past sessions (S)
-After a working day or a live run, mine what agents actually did. `fium sleep mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/sleep.json` adds sources, hint tables and gates (`fium sleep --help`). `learn` keeps each fix as a lesson that `replay` checks. Fix the top clusters test-first, so that each fix lands as a check (S2), placed where the failure happens (S3).
+After a working day or a live run, mine what agents actually did. `fium learn mine`, then `digest`, reads the project's `~/.claude/projects` transcripts; `bench/learn.json` adds sources, hint tables and gates (`fium learn --help`). `keep` keeps each fix as a lesson `replay` checks. Fix the top clusters test-first, so each fix lands as a check (S2), placed where the failure happens (S3).
 
 ## Across repos
 For one goal across several repos (`/fium across <goal>`), read `across.md` beside this file and follow it. Even in one repo, `fium grep <name>` finds a name's users in every repo before you rename or remove it, and `fium status` shows each repo's branches.

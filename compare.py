@@ -1,4 +1,4 @@
-"""fium compare, noise and scope: what a change costs against a baseline, and which bench tasks it can move."""
+"""fium compare, noise and affects: what a change costs against a baseline, and which bench tasks it can move."""
 import json, math, os, random, re, statistics, subprocess, sys
 from fnmatch import fnmatch
 from pathlib import Path
@@ -217,9 +217,9 @@ def find_run(rev, repo):
     return str(hits[0])
 
 
-def scope(repo, revs, affects):
+def affects(repo, revs, rules_file):
     # Which bench tasks a change can move. A file no rule matches could move anything, so it means all.
-    rules = json.load(open(affects))["rules"]
+    rules = json.load(open(rules_file))["rules"]
     base = revs.split("..")[0]
     files = changed_since(repo, base)
     if files is None:
@@ -237,9 +237,8 @@ def scope(repo, revs, affects):
     return {"tasks": tasks if tasks == "*" else sorted(tasks), "why": why}
 
 
-def scope_main(a):
-    affects = a.affects or str(Path(a.repo) / "bench" / "affects.json")
-    res = scope(a.repo, a.revs, affects)
+def affects_main(a):
+    res = affects(a.repo, a.revs, a.rules or str(Path(a.repo) / "bench" / "affects.json"))
     if a.json:
         print(json.dumps(res, indent=2))
     else:

@@ -9,10 +9,10 @@
 - `across.md`: the skill's /fium across
 - `fium`: CLI entry
 - `check.py`: check
-- `compare.py`: compare, noise, scope
+- `compare.py`: compare, noise, affects
 - `done.py`: done
 - `repos.py`: survey, status, grep, new
-- `sleep.py`: sleep
+- `learn.py`: learn
 - `templates/`: what new copies
 - `bench/`: fium's bench
 - `test/`: a file per module
