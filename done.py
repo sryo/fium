@@ -108,14 +108,27 @@ def short(cmd):
     return cmd if len(cmd) <= 60 else cmd[:57] + "..."
 
 
+def base_branch(repo, base=None):
+    return base or next((b for b in ("main", "master") if not git(repo, "rev-parse", "-q", "--verify", b).returncode), "HEAD")
+
+
 def done_main(a):
     repo = Path(git(".", "rev-parse", "--show-toplevel").stdout.strip() or ".").resolve()
+    branch = base_branch(repo, a.base)
+    res = done(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip(), branch, a.costly)
+    if res["blocked"] or res["hard"] or res["other_model"]:
+        sys.exit(1)
+    if res["grew"] or res["pending"] or res["unmeasured"]:
+        sys.exit(3)
+    print("Nothing grew past its cap and nothing broke: it can merge.")
+
+
+def done(repo, sha, branch, costly=False, print=print):
+    # Every How we know row at sha and now, printed under its goal; returns what blocks, what grew and each verdict.
     goals = (repo / "GOALS.md").read_text() if (repo / "GOALS.md").exists() else ""
     rows = how_we_know(goals)
-    branch = a.base or next((b for b in ("main", "master") if not git(repo, "rev-parse", "-q", "--verify", b).returncode), "HEAD")
-    sha = git(repo, "merge-base", branch, "HEAD").stdout.strip()
     dirty = bool(git(repo, "status", "--porcelain").stdout.strip())
-    cmds = list(dict.fromkeys(r["cmd"] for r in rows if r["cmd"] and (not r["kind"] or r["kind"] == "costly" and a.costly)))
+    cmds = list(dict.fromkeys(r["cmd"] for r in rows if r["cmd"] and (not r["kind"] or r["kind"] == "costly" and costly)))
     label = {}
     for r in rows:
         label.setdefault(r["cmd"], r["metric"])
@@ -138,7 +151,7 @@ def done_main(a):
         for name in {**base[c]["metrics"], **here[c]["metrics"]}:
             owner[(c, name)] = ([i for i in users if names(name, rows[i]["where"])] or
                                 [i for i in users if names(name, rows[i]["text"])] or users)[0]
-    blocked, hard, grew, pending, unmeasured, other_model = [], [], [], [], [], []
+    blocked, hard, grew, pending, unmeasured, other_model, failed, verdicts = [], [], [], [], [], [], [], {}
     for r in rows:
         if r["goal"] != shown:
             print(titles.get(r["goal"], f"Goal {r['goal']}"))
@@ -169,6 +182,7 @@ def done_main(a):
                 other_model.append(short(c))
             if b["ok"] and not h["ok"]:
                 blocked.append(c)
+                failed.append(short(c))
             elif not b["ok"]:
                 # A command that failed at the base measured nothing to hold now against, for every row that runs it.
                 why = "fails before and after" if not h["ok"] else "failed at the base"
@@ -185,6 +199,7 @@ def done_main(a):
                 continue
             v = judge(name, m, h["metrics"].get(name), rel(name), {**b["limits"], **h["limits"]}.get(name), noise.get("abs", {}).get(name, 0),
                       cap_for(name, m.get("kind", "time"), caps))
+            verdicts[name] = {**v, "kind": m.get("kind", "time")}
             # An unchanged number still shows when its row or a Caps override names it: those are the ones watched.
             if v["verdict"] == "same" and len(mine) > 3 and not (
                     named(name, r["text"]) or any(fnmatch(name, g) for g, _ in caps[1])):
@@ -214,8 +229,5 @@ def done_main(a):
         print(f"Not measured yet: {', '.join(dict.fromkeys(pending))} (costly). It isn't done until they run, or the user says they needn't.")
     if unmeasured:
         print(f"Couldn't measure: {', '.join(unmeasured)}. It isn't done until they run clean, or the user says they needn't.")
-    if blocked or hard or other_model:
-        sys.exit(1)
-    if grew or pending or unmeasured:
-        sys.exit(3)
-    print("Nothing grew past its cap and nothing broke: it can merge.")
+    return {"blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured,
+            "other_model": other_model, "failed": failed, "verdicts": verdicts}

@@ -4,7 +4,7 @@ from pathlib import Path
 FIUM = Path(__file__).resolve().parent.parent / "fium"
 
 
-class Try(unittest.TestCase):
+class Repo(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.d = Path(self.tmp.name) / "demo"
@@ -29,6 +29,8 @@ class Try(unittest.TestCase):
         r = subprocess.run([sys.executable, str(FIUM), "try", *args], capture_output=True, text=True, cwd=self.d, env=self.env)
         return r.returncode, r.stdout + r.stderr
 
+
+class Try(Repo):
     def test_every_attempt_is_listed_with_what_was_tried_and_why_it_was_kept_or_dropped(self):
         self.commit("shorter skill", **{"SKILL.md": "b\n"})
         self.fium("shorter skill", "--record", "keep", "--reason", "read bytes 900 -> 700, nothing worse")
@@ -72,6 +74,88 @@ class Try(unittest.TestCase):
         (self.d / "bench").mkdir()
         (self.d / "bench/judge").write_text("!defaults\nnothing/*\n")
         self.assertNotIn("changes the judge", self.fium()[1], "bench/judge replaces the defaults when it says !defaults")
+
+
+GOALS = """# demo: goals
+
+## Goals, in priority order
+1. **Small.**
+
+## How we know
+| Goal | Metric | Where | Run |
+|---|---|---|---|
+| 1 | loc, calls, ms | `r.py` | `python3 r.py` |
+"""
+
+# A bench that counts tool.py's lines and reads the calls and times an eval would have measured from files.
+BENCH = """import json
+m = lambda kind, s: {"dir": "lower", "kind": kind, "samples": s}
+json.dump({"metrics": {"loc": m("loc", [len(open("tool.py").read().splitlines())]),
+                       "calls": m("count", [int(open("calls.txt").read())]),
+                       "ms": m("time", json.loads(open("ms.txt").read()))}}, open("run.json", "w"))
+print("run.json")
+"""
+
+
+class Keep(Repo):
+    def setUp(self):
+        super().setUp()
+        self.commit("bench", **{"GOALS.md": GOALS, "r.py": BENCH, "tool.py": "a\nb\nc\n", "calls.txt": "10", "ms.txt": "[100, 100, 100]"})
+        self.git("checkout", "-q", "-b", "loop")
+        self.fium("baseline", "--record", "keep")
+
+    def attempt(self, idea, *more, **files):
+        self.commit(idea, **files)
+        code, out = self.fium(idea, *more)
+        return code, out.strip().splitlines()[-1], out
+
+    def test_a_cut_that_leaves_every_other_number_the_same_is_kept(self):
+        code, last, out = self.attempt("drop a line", **{"tool.py": "a\nb\n"})
+        self.assertEqual((code, last), (0, "keep"), out)
+        self.assertIn("loc: 3 -> 2", out, "the reason is the numbers that moved")
+        self.assertEqual(json.loads(self.log()[-1])["status"], "keep", "the attempt is logged")
+
+    def test_an_addition_that_improves_nothing_is_dropped(self):
+        code, last, out = self.attempt("add a line", **{"tool.py": "a\nb\nc\nd\n", "calls.txt": "10"})
+        self.assertEqual((code, last), (1, "discard"), out)
+        code, last, out = self.attempt("rename", **{"SKILL.md": "renamed\n"})
+        self.assertEqual(last, "discard", "an addition must make its target better, not just leave things the same")
+
+    def test_an_addition_is_kept_when_its_target_gets_better_and_nothing_else_worse(self):
+        code, last, out = self.attempt("batch calls", "--target", "calls", **{"tool.py": "a\nb\nc\n# batch\n", "calls.txt": "7"})
+        self.assertEqual(last, "discard", "it added a line, and lines are worse")
+        code, last, out = self.attempt("batch calls in place", "--target", "calls", **{"tool.py": "a\nb\nc\n", "calls.txt": "7"})
+        self.assertEqual((code, last), (0, "keep"), out)
+
+    def test_cutting_what_nothing_measures_is_parked_not_kept(self):
+        code, last, out = self.attempt("trim the readme", **{"README.md": "short\n"})
+        self.assertEqual(last, "park", "nothing measured read it, so nothing says the cut is safe")
+
+    def test_a_command_that_now_fails_is_a_crash(self):
+        code, last, out = self.attempt("break it", **{"calls.txt": "ten"})
+        self.assertEqual((code, last), (1, "crash"), out)
+
+    def test_a_noisy_number_too_close_to_call_is_retested(self):
+        self.commit("noisy", **{"ms.txt": "[100, 140, 80, 120, 90, 110]"}); self.fium("noisy base", "--record", "keep")
+        code, last, out = self.attempt("cut and maybe faster", **{"tool.py": "a\nb\n", "ms.txt": "[80, 133, 68, 120, 81, 97]"})
+        self.assertEqual(last, "retest", "an inconclusive number needs more reps before a keep")
+
+    def test_small_rises_that_pass_one_at_a_time_cant_add_up(self):
+        code, last, out = self.attempt("cut a", "--target", "calls", **{"calls.txt": "9", "ms.txt": "[108, 108, 108]"})
+        self.assertEqual(last, "keep", "8% is within the band")
+        code, last, out = self.attempt("cut b", "--target", "calls", **{"calls.txt": "8", "ms.txt": "[116, 116, 116]"})
+        self.assertEqual(last, "discard", "16% since the branch left main is past the band")
+        self.assertIn("since main", out)
+
+    def test_an_attempt_that_changes_the_judge_is_refused_and_not_logged(self):
+        n = len(self.log())
+        code, last, out = self.attempt("lenient", **{"tests/eval/run.py": "lenient\n", "tool.py": "a\n"})
+        self.assertEqual(code, 1)
+        self.assertIn("changes the judge", out)
+        self.assertEqual(len(self.log()), n)
+
+    def log(self):
+        return (Path(self.tmp.name) / "home" / "runs" / "demo" / "tries.jsonl").read_text().splitlines()
 
 
 if __name__ == "__main__":

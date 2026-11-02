@@ -44,6 +44,8 @@ def main():
     tr.add_argument("idea", nargs="?", help="what this attempt tries, in one line")
     tr.add_argument("--record", choices=STATUSES, help="log HEAD as this attempt with this outcome, without measuring")
     tr.add_argument("--reason", help="why it was kept or dropped: the numbers that moved")
+    tr.add_argument("--target", help="the number this attempt must make better, when it adds rather than cuts")
+    tr.add_argument("--costly", action="store_true", help="also run the costly: rows (agent evals)")
     sub.add_parser("learn", help="mine past sessions for failures and keep each fix as a lesson (fium learn --help)")
     sub.add_parser("new", help="start a project from the templates").add_argument("name")
     sc = sub.add_parser("affects", help="which bench tasks a change can move")
