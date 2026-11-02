@@ -4,7 +4,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from check import git
-from compare import DEFAULT_REL, cap_for, change, env_row, judge, noise_file, parse_caps, runs_dir
+from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, judge, noise_file, old_caps, parse_caps, runs_dir
 
 
 def how_we_know(goals):
@@ -148,7 +148,7 @@ def done_main(a):
         sys.exit(1)
     if res["grew"] or res["pending"] or res["unmeasured"]:
         sys.exit(3)
-    print("Nothing grew past its cap and nothing broke: it can merge.")
+    print("Nothing got worse past its cap and nothing broke: it can merge.")
 
 
 def done(repo, sha, branch, costly=False, print=print):
@@ -239,29 +239,32 @@ def done(repo, sha, branch, costly=False, print=print):
             verdicts[name] = {**v, "kind": m.get("kind", "time"), "dir": m.get("dir", "lower")}
             # An unchanged number still shows when its row or a Caps override names it: those are the ones watched.
             if v["verdict"] == "same" and len(mine) > 3 and not (
-                    named(name, r["text"]) or any(fnmatch(name, g) for g, _ in caps[1])):
+                    named(name, r["text"]) or any(fnmatch(name, g) for g in cap_overrides(caps))):
                 same += 1
                 continue
-            print(f"     {v['verdict'] + ('?' if v.get('low_n') else ''):>9}  {name}: {change(v.get('base'), v.get('run'))}")
+            shown = "dropped" if v["verdict"] == "grew" and m.get("dir") == "higher" else v["verdict"]
+            print(f"     {shown + ('?' if v.get('low_n') else ''):>9}  {name}: {change(v.get('base'), v.get('run'))}")
             if v["verdict"] in ("limit", "missing"):
                 blocked.append(name)
             elif v["verdict"] == "worse" or v["verdict"] == "inconclusive" and v["base"] and (
                     v["run"] / v["base"] > 1 + rel(name) if m.get("dir", "lower") == "lower" else v["run"] / v["base"] < 1 - rel(name)):
                 # Inconclusive counts only when its median moved past the noise band the wrong way.
-                (hard if v["cap"] == 3 else grew).append(name)
+                (hard if v["cap"] == "hard" else grew).append(name)
         if same:
             print(f"     {same} same")
-    # Caps (GOALS.md): a hard cap that grew isn't done until it's the same or better, or the user agrees it can't get
-    # there without lowering quality; a semi-hard one past its margin merges only if the user lets it.
+    # Caps (GOALS.md): a hard number that got worse isn't done until it's the same or better, or the user agrees it
+    # can't get there without lowering quality; an ask one past its margin merges only if the user lets it.
     blocked, hard, grew = (list(dict.fromkeys(x)) for x in (blocked, hard, grew))
     if blocked:
         print(f"Not done: {', '.join(blocked)} broke or crossed a limit. Fix it.")
     if other_model:
         print(f"Not done: {', '.join(other_model)} ran on another model at the base. Measure both on the same model.")
     if hard:
-        print(f"Not done: {', '.join(hard)} (hard) grew. Make it the same or better, or agree with the user it can't be without lowering quality.")
+        print(f"Not done: {', '.join(hard)} (hard) got worse. Make it the same or better, or agree with the user it can't be without lowering quality.")
     if grew:
-        print(f"{', '.join(grew)} (semi-hard) grew past its margin. Simplify it, or the user lets it pass.")
+        print(f"{', '.join(grew)} got worse past its margin. Simplify it, or the user lets it pass.")
+    if old_caps(goals):
+        print(f"GOALS.md's Caps line uses the old digits. Write it in words: {caps_line(caps)}")
     if pending and not (blocked or hard):
         print(f"Not measured yet: {', '.join(dict.fromkeys(pending))} (costly). It isn't done until they run, or the user says they needn't.")
     if unmeasured:

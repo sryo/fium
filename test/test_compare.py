@@ -133,16 +133,44 @@ class Compare(unittest.TestCase):
 
     def test_goals_caps_set_how_firm_each_metric_is(self):
         subprocess.run(["git", "init", "-q", str(self.d)], check=True)
-        (self.d / "GOALS.md").write_text("## How we know\nCaps: `q3 b1 t0 t.js*=2 big=3`\n")
+        (self.d / "GOALS.md").write_text("## How we know\nCaps: `all=ask quality=hard bytes=ask+10% time=free t.js*=ask big=hard`\n")
         m = lambda v, k="bytes": metric([v], kind=k)
         b = self.write("b.json", {"dash": m(1000), "t.js": m(500), "big": m(10), "q": m(1, "quality"), "ms": m(5, "time")})
         r = self.write("r.json", {"dash": m(1080), "t.js": m(501), "big": m(11), "q": m(1, "quality"), "ms": m(9, "time")})
         code, v = self.compare(b, r)
         got = {k: (v[k]["verdict"], v[k]["cap"]) for k in ["dash", "t.js", "big", "ms"]}
-        self.assertEqual(got, {"dash": ("grew", 1), "t.js": ("worse", 2), "big": ("worse", 3), "ms": ("grew", 0)})
+        self.assertEqual(got, {"dash": ("grew", "ask"), "t.js": ("worse", "ask"), "big": ("worse", "hard"), "ms": ("grew", "free")})
         self.assertEqual(code, 1)
         _, v = self.compare(b, self.write("r2.json", {"dash": m(1200), "t.js": m(500), "big": m(10), "q": m(1, "quality"), "ms": m(5, "time")}))
         self.assertEqual(v["dash"]["verdict"], "worse")
+
+    def test_a_cap_margin_can_be_an_amount(self):
+        subprocess.run(["git", "init", "-q", str(self.d)], check=True)
+        (self.d / "GOALS.md").write_text("Caps: `bytes=ask+200`\n")
+        b = self.write("b.json", {"read": metric([16446], kind="bytes")})
+        self.assertEqual(self.compare(b, self.write("r.json", {"read": metric([16582], kind="bytes")}))[1]["read"]["verdict"], "grew")
+        self.assertEqual(self.compare(b, self.write("r2.json", {"read": metric([16700], kind="bytes")}))[1]["read"]["verdict"], "worse")
+
+    def test_the_last_caps_entry_that_matches_a_number_wins(self):
+        sys.path.insert(0, str(FIUM.parent)); from compare import cap_for, parse_caps
+        self.assertEqual(cap_for("x", "bytes", parse_caps("Caps: `all=hard bytes=ask`")), ("ask", 0, 0))
+        self.assertEqual(cap_for("x", "bytes", parse_caps("Caps: `bytes=ask all=hard`")), ("hard", 0, 0))
+        self.assertEqual(cap_for("x", "bytes", parse_caps("")), ("ask", 0, 0), "no line: ask on any growth")
+
+    def test_old_digit_caps_read_as_the_words_they_meant(self):
+        sys.path.insert(0, str(FIUM.parent)); from compare import parse_caps
+        old = parse_caps("Caps: `q3 k2 n2 b1 t1:25 t.js*=2 m*=1 z*=0`")
+        new = parse_caps("Caps: `quality=hard tokens=ask count=ask loc=ask bytes=ask+10% time=ask+25% t.js*=ask m*=ask+10% z*=free`")
+        self.assertEqual(old, new)
+
+    def test_a_caps_word_fium_doesnt_know_says_which_it_takes(self):
+        sys.path.insert(0, str(FIUM.parent)); from compare import parse_caps
+        with self.assertRaises(SystemExit) as e:
+            parse_caps("Caps: `bytes=strict`")
+        self.assertIn("hard, ask or free", str(e.exception))
+        with self.assertRaises(SystemExit) as e:
+            parse_caps("Caps: `bytes=hard+10%`")
+        self.assertIn("only ask takes a margin", str(e.exception))
 
     def test_missing_metric_fails(self):
         b = self.write("b.json", {"a": metric([1], kind="count"), "b": metric([1], kind="count")})

@@ -42,7 +42,7 @@ def ratio_range(base, run, n=2000):
     return out[int(0.025 * n)], out[int(0.975 * n) - 1]
 
 
-def judge(name, base, run, rel, limit, abs_=0, cap=(2, 0)):
+def judge(name, base, run, rel, limit, abs_=0, cap=("ask", 0, 0)):
     if run is None or not run.get("samples") or not base.get("samples"):
         return {"metric": name, "verdict": "missing"}
     lower = base.get("dir", "lower") == "lower"
@@ -80,41 +80,68 @@ def judge(name, base, run, rel, limit, abs_=0, cap=(2, 0)):
         worse = mr > mb if lower else mr < mb
         better = mr < mb if lower else mr > mb
         v = "worse" if worse else "better" if better else "same"
-    # The owner's cap (GOALS.md Caps:): 0 soft, no limit; 1 and 2 semi-hard, growth within the margin passes and past
-    # it the user chooses; 3 hard, it must end the same or better.
-    level, slack = cap
+    # The owner's cap (GOALS.md Caps:): free, no limit; ask, a move within the margin passes and past it the user
+    # chooses; hard, it must end the same or better.
+    level, pct, amount = cap
     row["cap"] = level
-    if v == "worse" and (level == 0 or (level in (1, 2) and mb and abs(mr - mb) / abs(mb) <= slack)):
+    if v == "worse" and (level == "free" or level == "ask" and abs(mr - mb) <= max(amount, pct * abs(mb))):
         v = "grew"
     return {**row, "verdict": v}
 
 
-KIND_LETTER = {"quality": "q", "tokens": "k", "count": "n", "loc": "n", "bytes": "b", "time": "t"}
 CAP_LINE = re.compile(r"^\s*(?:Caps|Topes):\s*`?([^`\n]+)`?", re.M | re.I)
+CAP_ENTRY = re.compile(r"(\w+)(?:\+(\d+(?:\.\d+)?)(%?))?")
+KINDS = ("quality", "tokens", "count", "loc", "bytes", "time")
+# The digits Caps first used, like chmod's: a letter per kind and 3 hard, 2 ask, 1 ask+10%, 0 free; ":25" a percent.
+OLD_KINDS = {"q": ["quality"], "k": ["tokens"], "n": ["count", "loc"], "b": ["bytes"], "t": ["time"]}
+OLD_LEVEL = re.compile(r"([0-3])(?::(\d+(?:\.\d+)?))?")
 
 
 def parse_caps(text):
-    # "q3 k2 n2 b1 t1 t.js*=2 mount*=1:25": a level per kind letter, then overrides by metric glob. The margin after
-    # ":" is a percent; 1 has 10% unless it says otherwise, 2 none unless it says one.
-    kinds, globs = {}, []
+    # "all=ask quality=hard bytes=ask+10% time=ask+200 t.js*=ask": a level per kind word, `all`, or metric glob,
+    # read left to right; for each number the last entry that matches it wins. Only ask takes a margin, a percent
+    # or an amount. Returns [(key, (level, pct, amount))]; a line in the old digits reads as what it meant.
     m = CAP_LINE.search(text or "")
+    out = []
     for tok in (m.group(1).split() if m else []):
-        key, _, val = tok.rpartition("=") if "=" in tok else (tok[0], "", tok[1:])
-        lvl, _, pct = val.partition(":")
-        cap = (int(lvl), float(pct) / 100 if pct else 0.10 if lvl == "1" else 0)
-        if "=" in tok:
-            globs.append((key, cap))
-        else:
-            kinds[key] = cap
-    return kinds, globs
+        key, eq, val = tok.rpartition("=")
+        old = OLD_LEVEL.fullmatch(val) if eq else (tok[0] in OLD_KINDS and OLD_LEVEL.fullmatch(tok[1:]))
+        if old:
+            lvl, pct = old.groups()
+            level = {"3": "hard", "0": "free"}.get(lvl, "ask")
+            pct = float(pct) / 100 if pct else 0.10 if lvl == "1" else 0
+            out += [(k, (level, pct if level == "ask" else 0, 0)) for k in ([key] if eq else OLD_KINDS[tok[0]])]
+            continue
+        e = CAP_ENTRY.fullmatch(val) if eq else None
+        if not e or e.group(1) not in ("hard", "ask", "free"):
+            sys.exit(f"Caps: {tok!r} isn't kind=level; the level is hard, ask or free, like `all=ask bytes=ask+10% t.js*=hard`")
+        level, n, pct = e.groups()
+        if n and level != "ask":
+            sys.exit(f"Caps: {tok!r}: only ask takes a margin (ask+10% or ask+200)")
+        out.append((key, (level, float(n) / 100 if n and pct else 0, float(n) if n and not pct else 0)))
+    return out
+
+
+def caps_line(caps):
+    # The line in words, to write in place of an old digit one.
+    word = lambda c: c[0] + (f"+{c[1] * 100:g}%" if c[1] else f"+{c[2]:g}" if c[2] else "")
+    return "Caps: `" + " ".join(f"{k}={word(c)}" for k, c in caps) + "`"
+
+
+def old_caps(text):
+    m = CAP_LINE.search(text or "")
+    return bool(m and any(OLD_LEVEL.fullmatch(t.rpartition("=")[2] if "=" in t else t[1:]) for t in m.group(1).split()))
+
+
+def cap_overrides(caps):
+    return [k for k, _ in caps if k != "all" and k not in KINDS]
 
 
 def cap_for(name, kind, caps):
-    kinds, globs = caps
-    for g, cap in reversed(globs):
-        if fnmatch(name, g):
+    for key, cap in reversed(caps):
+        if key == "all" or key == kind or key not in KINDS and fnmatch(name, key):
             return cap
-    return kinds.get(KIND_LETTER.get(kind, ""), (2, 0))
+    return ("ask", 0, 0)
 
 
 def goals_text(path):

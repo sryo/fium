@@ -26,7 +26,7 @@ GOALS = """# demo: goals
 | 7 | rules; size | `r.py` rules | `python3 r.py` |
 | 7 | size | `r.py` size | `python3 r.py` |
 
-Caps: `n2 log*=1 answer*=2`
+Caps: `count=ask log*=ask+10% answer*=ask`
 """
 
 
@@ -78,19 +78,35 @@ class Done(unittest.TestCase):
         self.done("--start")
         # Hard: not done until the same or better. Semi-hard: within its margin it passes, past it the user chooses.
         # Soft: no limit.
-        caps = "Caps: `n2 log*=1 answer*=2`"
+        caps = "Caps: `count=ask log*=ask+10% answer*=ask`"
         for line, out_m, out_l, code, says in [
-            ("`n2 log*=1 answer*=3`", "print(6)", "print(100)", 1, "same or better"),
-            ("`n2 log*=1 answer*=2`", "print(6)", "print(100)", 3, "the user lets it pass"),
-            ("`n2 log*=1 answer*=2:25`", "print(6)", "print(100)", 0, "can merge"),
-            ("`n2 log*=1 answer*=2`", "print(5)", "print(105)", 0, "can merge"),
-            ("`n2 log*=1 answer*=2`", "print(5)", "print(120)", 3, "the user lets it pass"),
-            ("`n2 log*=0 answer*=2`", "print(5)", "print(150)", 0, "can merge"),
+            ("`count=ask log*=ask+10% answer*=hard`", "print(6)", "print(100)", 1, "same or better"),
+            ("`count=ask log*=ask+10% answer*=ask`", "print(6)", "print(100)", 3, "the user lets it pass"),
+            ("`count=ask log*=ask+10% answer*=ask+25%`", "print(6)", "print(100)", 0, "can merge"),
+            ("`count=ask log*=ask+10% answer*=ask`", "print(5)", "print(105)", 0, "can merge"),
+            ("`count=ask log*=ask+10% answer*=ask`", "print(5)", "print(120)", 3, "the user lets it pass"),
+            ("`count=ask log*=free answer*=ask`", "print(5)", "print(150)", 0, "can merge"),
         ]:
             self.write(**{"GOALS.md": GOALS.replace(caps, "Caps: " + line), "m.py": out_m, "l.py": out_l})
             got, out = self.done("--costly")
             self.assertEqual(got, code, f"{line} m:{out_m} l:{out_l}\n{out}")
             self.assertIn(says, out, line)
+
+    def test_old_digit_caps_still_hold_and_done_shows_them_in_words(self):
+        self.write(**{"GOALS.md": GOALS.replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `n2 log*=1 answer*=3`"),
+                      "m.py": "print(6)"})
+        code, out = self.done()
+        self.assertEqual(code, 1, "answer*=3 is still hard\n" + out)
+        self.assertIn("Caps: `count=ask loc=ask log*=ask+10% answer*=hard`", out, "the line to write instead, copy-ready")
+
+    def test_a_number_that_should_rise_says_dropped_not_grew(self):
+        score = R.replace('{n: {"dir": "lower", "kind": "count", "samples": [v]} for n, v in {"rules": 3, "size": 9, "extra": 1}.items()}',
+                          '{"score": {"dir": "higher", "kind": "quality", "samples": [%s]}}')
+        self.write(**{"r.py": score % 10, "GOALS.md": GOALS.replace("answer*=ask`", "answer*=ask quality=free`")})
+        self.git("commit", "-qam", "score")
+        self.write(**{"r.py": score % 9})
+        out = self.done()[1]
+        self.assertIn("dropped  score: 10 -> 9", out, "a higher-is-better number that fell didn't grow")
 
     def test_a_bench_metric_shows_once_under_the_row_that_names_it(self):
         self.write(**{"r.py": R.replace('"rules": 3, "size": 9, "extra": 1', '"rules": 4, "size": 10, "extra": 2')})
@@ -100,7 +116,7 @@ class Done(unittest.TestCase):
         self.assertLess(out.index("  rules; size"), out.index("rules: 3 -> 4"))
         self.assertEqual(out.count("extra: 1 -> 2"), 1, "a metric no row names still shows, under the command's first row")
         self.assertEqual(out.count("`python3 r.py`: ok, as above"), 1, "the second row says it shares the first's run")
-        self.assertEqual(next(l for l in out.splitlines() if "grew past" in l).count("rules"), 1, "each name once in the summary")
+        self.assertEqual(next(l for l in out.splitlines() if "worse past" in l).count("rules"), 1, "each name once in the summary")
 
     def test_where_naming_a_metric_wins_over_a_row_that_only_mentions_the_word(self):
         self.write(**{"GOALS.md": GOALS.replace("| 7 | rules; size | `r.py` rules |", "| 7 | rules without an id | `r.py` unnamed |")
@@ -118,7 +134,7 @@ class Done(unittest.TestCase):
         code, out = self.done()
         self.assertIn("inconclusive", out)
         self.assertEqual(code, 3, out)
-        self.assertNotIn("grew past", out, "only the costly row keeps it open")
+        self.assertNotIn("worse past", out, "only the costly row keeps it open")
 
     def test_a_projects_measured_noise_judges_its_numbers_not_a_flat_ten_percent(self):
         t = lambda xs: R.replace('{n: {"dir": "lower", "kind": "count", "samples": [v]} for n, v in {"rules": 3, "size": 9, "extra": 1}.items()}',
@@ -201,7 +217,7 @@ class Done(unittest.TestCase):
         self.assertIn("same  rules: 3", out, "the base came from the cache and still reads")
 
     def test_a_number_takes_its_cap_from_the_kind_its_row_names(self):
-        self.write(**{"GOALS.md": GOALS.replace("| 6 | log lines |", "| 6 | log bytes |").replace("Caps: `n2 log*=1 answer*=2`", "Caps: `n2 b3`"),
+        self.write(**{"GOALS.md": GOALS.replace("| 6 | log lines |", "| 6 | log bytes |").replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `count=ask bytes=hard`"),
                       "l.py": "print(101)"})
         code, out = self.done()
         self.assertIn("log bytes: 100 -> 101", out)
@@ -260,14 +276,14 @@ class Done(unittest.TestCase):
     def test_an_unchanged_number_a_row_or_a_cap_names_still_shows_among_many(self):
         many = '{**{f"op{i}": 1 for i in range(9)}, "beacon bytes": 50, "rules": 3}'
         self.write(**{"r.py": R.replace('{"rules": 3, "size": 9, "extra": 1}', many),
-                      "GOALS.md": GOALS.replace("Caps: `n2 log*=1 answer*=2`", "Caps: `n2 beacon*=2`")})
+                      "GOALS.md": GOALS.replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `count=ask beacon*=ask`")})
         self.git("commit", "-qam", "many")
         self.write(**{"m.py": "print(4)"})
         out = self.done()[1]
         self.assertIn("same  beacon bytes: 50", out, "a Caps override names it")
         self.assertIn("same  rules: 3", out, "its row names it")
         self.assertIn("9 same", out, "the rest collapse")
-        self.write(**{"GOALS.md": GOALS.replace("Caps: `n2 log*=1 answer*=2`", "Caps: `n2 beacon*=2`").replace("| 7 | rules; size | `r.py` rules |", "| 7 | rules; size | `r.py` rules, `op<n>` |")})
+        self.write(**{"GOALS.md": GOALS.replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `count=ask beacon*=ask`").replace("| 7 | rules; size | `r.py` rules |", "| 7 | rules; size | `r.py` rules, `op<n>` |")})
         self.assertIn("9 same", self.done()[1], "a pattern places metrics but doesn't keep them on show")
 
     def test_a_command_dropped_from_the_table_after_the_base_was_cached_is_ignored(self):
