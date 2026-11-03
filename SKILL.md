@@ -18,8 +18,9 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 
    Then the README: why you'd want it and how you use it (R).
 4. Before the first feature, set up `bench/` with a baseline in the run format (K1), so `fium done` can measure every later change.
-5. A UI repo can add DESIGN.md (templates/DESIGN.md); figma-cdp reads it as the source.
-6. Run `fium check .` until it's clean. Commit in the repo's style, with no attribution lines (C1).
+5. Build every promise README and GOALS make, each measured (W3).
+6. A UI repo can add DESIGN.md (templates/DESIGN.md); figma-cdp reads it as the source.
+7. Run `fium check .` until it's clean. Commit in the repo's style, with no attribution lines (C1).
 
 ## Bring an existing project in
 1. Run `fium check <repo>` and fix the errors one commit at a time. These are moves and docs only, with no behaviour changes:

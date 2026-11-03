@@ -34,9 +34,9 @@ A change is done when the user has seen what it did to each of the project's own
 
 ## Work (W)
 How a change goes from an idea to done.
-- **W1** Read the repo, then reply once: the plan (`R1…Rn`, each a result and the test that shows it, what's out, the numbers it moves) and at most three questions, each with a default. Numbers, not adjectives. The user's yes takes the defaults and freezes the plan (K3).
+- **W1** Read the repo, then reply once: the plan (`R1…Rn`, each a result and the test that shows it, an R for each README or GOALS promise asked for, what's out, the numbers it moves) and at most three questions, each with a default. Numbers, not adjectives. The user's yes takes the defaults and freezes the plan (K3).
 - **W2 ✓** Test first: each R's test names it and fails before the code; a fix starts with one that fails on the bug, or, for a doc or message, a check that it stays. Never edit an expectation to fit the code.
-- **W3** One goal, about 100 lines besides tests; "for now" is another change. Done is every R green and one real run, checked against what the user first asked; until it does that, keep working without asking. A problem the change caused is never deferred.
+- **W3** One goal, about 100 lines besides tests; "for now" is another change. Done is every R green and one real run, checked against what the user first asked; for a project or its README, every promise in README and GOALS, built and measured or cut on the user's OK. Until then, keep working without asking. A problem the change caused is never deferred.
 - **W4** Tell the user things in their words: a goal by its name, a rule by what it says, each number with what it measures and its before → after. Never a goal's number, a rule's id or a cap's level.
 
 ## Learning (S)

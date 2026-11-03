@@ -258,6 +258,15 @@ class Docs(unittest.TestCase):
             cited = set(re.findall(r"\b([A-Z]\d+)\b", (ROOT / doc).read_text()))
             self.assertEqual(cited - ids, set(), doc)
 
+    def test_a_project_asked_for_is_done_only_when_every_readme_promise_is_built(self):
+        # A promise the plan left out went unbuilt while fium done passed; done covers the README, not only the plan.
+        rules = (ROOT / "RULES.md").read_text()
+        w1, w3 = (re.search(rf"^- \*\*{w}\*\* .*$", rules, re.M)[0] for w in ("W1", "W3"))
+        self.assertIn("an R for each README or GOALS promise asked for", w1)
+        self.assertIn("every promise in README and GOALS", w3)
+        new = (ROOT / "SKILL.md").read_text().split("## Start a new project")[1].split("## ")[0]
+        self.assertIn("Build every promise README and GOALS make", new)
+
     def test_check_reports_exactly_the_ticked_rules(self):
         # A finding cites a rule that still exists, and a rule marked as checked has a check behind it.
         rules_md = (ROOT / "RULES.md").read_text()
