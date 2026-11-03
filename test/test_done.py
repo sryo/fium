@@ -201,6 +201,19 @@ class Done(unittest.TestCase):
         self.assertIn("data size: 42 -> 50 (+8, +19%)", out, "now held to the before, like any row")
         self.assertEqual(code, 3, out)
 
+    def test_a_live_row_that_writes_a_run_file_shows_its_numbers_not_no_output(self):
+        # A row's Metric cell is prose ("rules; size"), not a metric's name; what it read is the run file's numbers.
+        self.write(**{"GOALS.md": GOALS.replace('| 4 | data size | `du` | live: `cat d.txt` |', '| 4 | rules; size | `r.py` | live: `python3 r.py` |')})
+        code, out = self.done("--start")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("no output", out)
+        self.assertIn("rules: 3", out)
+        self.assertIn("size: 9", out)
+        (Path(os.environ["FIUM_HOME"]) / "runs").exists() and [f.unlink() for f in (Path(os.environ["FIUM_HOME"]) / "runs").rglob("*.live.json")]
+        out = self.done("--costly")[1]
+        self.assertNotIn("no output", out, "a live row with no before still shows what it read")
+        self.assertIn("size: 9", out)
+
     def test_a_live_before_that_read_no_number_measures_nothing(self):
         self.write(**{"d.txt": "none yet\n"})
         self.done("--start")

@@ -113,9 +113,7 @@ def start(repo, sha, print=print):
     f.write_text(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "raw": raw}))
     print(f"fium done --start: before of {len(rows)} live rows, against {sha[:7]}")
     for r in rows:
-        m = measure(raw[r["cmd"]], r["metric"])
-        got = m["metrics"].get(r["metric"])
-        print(f"  {r['metric']}: " + (f"{got['samples'][0]:g}" if got else m.get("last") or "no output"))
+        print(f"  {r['metric']}: " + reading(measure(raw[r["cmd"]], r["metric"]), r))
     return 0
 
 
@@ -128,6 +126,15 @@ def claims(name, text):
     return bool(named(name, text) or any(
         re.fullmatch(re.sub(r"<[^>]+>", ".+", re.escape(p).replace("\\<", "<").replace("\\>", ">")), name)
         for p in re.findall(r"`([^`]*<[^`>]+>[^`]*)`", text)))
+
+
+def reading(m, row):
+    # What a row read: its one number, or a run file's metrics, those the row names first.
+    ms = m["metrics"]
+    if not ms:
+        return m.get("last") or "no output"
+    mine = [n for n in ms if claims(n, row["where"]) or claims(n, row["text"])] or list(ms)
+    return ", ".join((f"{n}: " if len(ms) > 1 or n != row["metric"] else "") + f"{statistics.median(ms[n]['samples']):g}" for n in mine)
 
 
 def short(cmd):
@@ -197,8 +204,8 @@ def done(repo, sha, branch, costly=False, print=print):
             print(f"       {r['by_hand'] or 'no Run cell'}: check it yourself")
             continue
         if r["kind"] == "live":
-            got = here[c]["metrics"].get(label[c])
-            print(f"       live `{short(c)}`: " + (f"{got['samples'][0]:g} now" if got else ("" if here[c]["ok"] else "fails, ")
+            got = here[c]["metrics"]
+            print(f"       live `{short(c)}`: " + (reading(here[c], r) + " now" if got else ("" if here[c]["ok"] else "fails, ")
                                                      + (here[c].get("last") or "no output")))
             # Live state is the row's only reading, so a row that read no number measured nothing.
             unmeasured.append(f"{r['metric']} (live: {'no before' if got else 'printed no number' if here[c]['ok'] else 'fails'})")
