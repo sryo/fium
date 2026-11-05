@@ -57,11 +57,14 @@ def measure(raw, name):
     else:
         out["last"] = last[:80]
     # A test runner's count of passing tests (node --test, unittest, pytest): fewer tests means less checked.
-    tests = re.findall(r"^[ℹ#] pass (\d+)$|^Ran (\d+) tests?|(\d+) passed", raw["out"] + raw["err"], re.M)
+    text = raw["out"] + raw["err"]
+    tests = re.findall(r"^[ℹ#] pass (\d+)$|^Ran (\d+) tests?|(\d+) passed", text, re.M)
     if tests:
-        # A command may run several runners; their counts add up.
-        out["metrics"]["tests passing"] = {"dir": "higher", "kind": "count",
-                                           "samples": [float(sum(int(next(x for x in t if x)) for t in tests))]}
+        # A command may run several runners; their counts add up. unittest's "Ran N" counts every test it ran or
+        # skipped, so its summary's skips, failures and errors come off: a skipped test checks nothing.
+        not_passing = re.findall(r"(?:skipped|failures|errors)=(\d+)", " ".join(re.findall(r"^(?:OK|FAILED) \((.*)\)$", text, re.M)))
+        passing = sum(int(next(x for x in t if x)) for t in tests) - sum(map(int, not_passing))
+        out["metrics"]["tests passing"] = {"dir": "higher", "kind": "count", "samples": [float(passing)]}
     return out
 
 

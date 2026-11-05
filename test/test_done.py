@@ -259,6 +259,17 @@ class Done(unittest.TestCase):
             del os.environ["WORLD"]
         self.assertIn("same  tokens per task: 5", out, "the world changed between runs: both sides see the new one")
 
+    def test_a_test_that_skips_now_is_one_fewer_passing(self):
+        self.write(**{"t.py": "print('Ran 12 tests in 0.1s'); print('OK')"}); self.git("commit", "-qam", "12 tests")
+        self.write(**{"t.py": "print('Ran 12 tests in 0.1s'); print('OK (skipped=5)')"})
+        code, out = self.done()
+        self.assertIn("tests passing: 12 -> 7", out, "a skipped test checks nothing")
+        self.assertEqual(code, 3)
+
+    def test_unittest_failures_and_errors_dont_count_as_passing(self):
+        self.write(**{"t.py": "print('Ran 10 tests in 0.1s'); print('FAILED (failures=1, errors=2, skipped=3)')"})
+        self.assertIn("tests passing: 4", self.done()[1])
+
     def test_several_runners_counts_add_up(self):
         self.write(**{"t.py": "print('Ran 33 tests in 0.1s'); print('ℹ pass 512')"})
         self.assertIn("tests passing: 545", self.done()[1])
