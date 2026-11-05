@@ -32,13 +32,13 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 
 ## Build a change (W)
 1. Read GOALS.md and the code it touches, then reply once with the plan and the questions (W1).
-2. On yes: `fium done --start` (the live rows' before), tests first and red, code to green, one real run, `fium done`.
-3. Report each R, the run and the numbers in the user's words (W4). Push only on the user's OK.
+2. On yes: `fium done --start` (the live rows' before), tests first and red, code to green, `fium done`.
+3. Report each R, which paths ran for real and the numbers in the user's words (W4). Push only on the user's OK.
 
 ## Judge a change
 1. The plan predicts the numbers the change moves (W1).
 2. Built, always judge it with `fium done`, not `fium compare`: every How we know row, measured where the change left the base branch and now. Add `--costly` for the agent evals only after stating their tokens and reps (L1, L2), predicting each verdict (W1) and running only the tasks `fium affects <base>..HEAD` names (L2).
-3. Exit 1: not done. Fix what broke; a hard number that got worse needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: an ask number got worse past its margin, so simplify it first, then show the user the numbers and ask whether it passes. "Couldn't measure" (a command failed at the base or both sides) keeps it open too: make it run clean, or the user says it needn't. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K3). Tell it under each goal's name, as `fium done` prints it (W4).
+3. Exit 1: not done. Fix what broke; a hard number that got worse needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: an ask number got worse past its margin, so simplify it first, then show the user the numbers and ask whether it passes. "Couldn't measure" (a command failed at the base or both sides) keeps it open too, and so do code no number shows and a row dropped since the base: make it run clean, or the user says it needn't. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K3). Tell it under each goal's name, as `fium done` prints it (W4).
 4. `fium compare <base-run> <run>` judges two runs directly. A stale verdict means the run measured another commit or a dirty tree (K2).
 
 ## Loop

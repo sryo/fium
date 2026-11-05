@@ -3,7 +3,7 @@ import json, re, shutil, statistics, subprocess, sys, tempfile, time
 from fnmatch import fnmatch
 from pathlib import Path
 
-from check import git
+from check import CODE_EXT, SKIP_DIRS, git
 from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, judge, noise_file, old_caps, parse_caps, runs_dir
 
 
@@ -137,6 +137,24 @@ def reading(m, row):
     return ", ".join((f"{n}: " if len(ms) > 1 or n != row["metric"] else "") + f"{statistics.median(ms[n]['samples']):g}" for n in mine)
 
 
+# Fewer net lines than this is a fix or a tweak; at this many a change adds something a user can do.
+ADDS = 20
+
+
+def added_code(repo, sha):
+    # Net lines of code the change adds since sha, files not yet added included. Tests, benches and docs aren't code here.
+    code = lambda f: Path(f).suffix in CODE_EXT and not Path(f).name.startswith(".") and not (SKIP_DIRS | {"bench"}) & set(Path(f).parts)
+    n = 0
+    for l in git(repo, "diff", "--numstat", sha).stdout.splitlines():
+        a, d, f = l.split("\t", 2)
+        if a != "-" and code(f):
+            n += int(a) - int(d)
+    for f in git(repo, "ls-files", "--others", "--exclude-standard").stdout.splitlines():
+        if code(f):
+            n += len((repo / f).read_text(errors="ignore").splitlines()) if (repo / f).is_file() else 0
+    return n
+
+
 def short(cmd):
     return cmd if len(cmd) <= 60 else cmd[:57] + "..."
 
@@ -153,7 +171,7 @@ def done_main(a):
     res = done(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip(), branch, a.costly)
     if res["blocked"] or res["hard"] or res["other_model"]:
         sys.exit(1)
-    if res["grew"] or res["pending"] or res["unmeasured"]:
+    if res["grew"] or res["pending"] or res["unmeasured"] or res["asks"]:
         sys.exit(3)
     print("Nothing got worse past its cap and nothing broke: it can merge.")
 
@@ -166,15 +184,23 @@ def done(repo, sha, branch, costly=False, print=print):
     label = {}
     for r in rows:
         label.setdefault(r["cmd"], r["metric"])
-    # A live row whose before was read (start) is held to it like any row.
+    # A row the change adds (neither its metric nor its command was in the base's table) has no base to fail at: what
+    # it reads is new. Rewording one of the two keeps a row what it was.
+    then = how_we_know(git(repo, "show", f"{sha}:GOALS.md").stdout)
+    was, ran = {r["metric"] for r in then}, {r["cmd"] for r in then if r["cmd"]}
+    old = lambda r: r["metric"] in was or r["cmd"] in ran
+    fresh = {r["cmd"] for r in rows if r["cmd"]} - {r["cmd"] for r in rows if old(r)}
+    # A live row whose before was read (start) is held to it like any row; a new one is read like a new row.
     read = {c: x for c, x in live_before(repo, sha)[1].get("raw", {}).items() if c in label and measure(x, label[c])["metrics"]}
     for r in rows:
-        if r["kind"] == "live" and r["cmd"] in read:
+        if r["kind"] == "live" and (r["cmd"] in read or r["cmd"] in fresh):
             r["kind"] = None
     cmds = list(dict.fromkeys(r["cmd"] for r in rows if r["cmd"] and (not r["kind"] or r["kind"] == "costly" and costly)))
     costly = {r["cmd"] for r in rows if r["kind"] == "costly"}
-    have = {**at_base(repo, sha, [c for c in cmds if c not in read], costly), **read}
+    have = {**at_base(repo, sha, [c for c in cmds if c not in read and c not in fresh], costly), **read}
     base = {c: measure(raw, label[c]) for c, raw in have.items() if c in cmds}
+    new_row = {c for c in cmds if c in fresh and c not in base}
+    base.update({c: {"ok": True, "s": 0, "metrics": {}, "limits": {}} for c in new_row})
     raw = {c: execute(c, repo) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
     here = {c: measure(x, label[c]) for c, x in raw.items()}
     caps = parse_caps(goals)
@@ -193,7 +219,7 @@ def done(repo, sha, branch, costly=False, print=print):
         for name in {**base[c]["metrics"], **here[c]["metrics"]}:
             owner[(c, name)] = ([i for i in users if names(name, rows[i]["where"])] or
                                 [i for i in users if names(name, rows[i]["text"])] or users)[0]
-    blocked, hard, grew, pending, unmeasured, other_model, failed, verdicts = [], [], [], [], [], [], [], {}
+    blocked, hard, grew, pending, unmeasured, other_model, failed, verdicts, news = [], [], [], [], [], [], [], {}, []
     for r in rows:
         if r["goal"] != shown:
             print(titles.get(r["goal"], f"Goal {r['goal']}"))
@@ -217,7 +243,14 @@ def done(repo, sha, branch, costly=False, print=print):
         b, h = base[c], here[c]
         i = rows.index(r)
         state = ("ok" if b["ok"] else "ok now, failed at the base") if h["ok"] else "fails" + ("" if b["ok"] else " (failed at the base too)")
-        if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
+        if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live") and c in new_row:
+            print(f"       `{short(c)}`: new row, {'ok' if h['ok'] else 'fails'}, {h['s']:g}s")
+            if h["ok"] and not h["metrics"]:
+                unmeasured += [f"{x['metric']} (new row printed no number)" for x in rows if x["cmd"] == c]
+            elif not h["ok"]:
+                blocked.append(c)
+                failed.append(short(c))
+        elif i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
             print(f"       `{short(c)}`: {state}, {b['s']:g}s -> {h['s']:g}s")
             env = env_row(b, h)
             if env:
@@ -237,6 +270,7 @@ def done(repo, sha, branch, costly=False, print=print):
         for name in mine:
             if name not in b["metrics"]:
                 print(f"     {'new':>9}  {name}: {statistics.median(h['metrics'][name]['samples']):g}")
+                news.append(name)
         same = 0
         for name, m in b["metrics"].items():
             if name not in mine:
@@ -270,6 +304,24 @@ def done(repo, sha, branch, costly=False, print=print):
         print(f"Not done: {', '.join(hard)} (hard) got worse. Make it the same or better, or agree with the user it can't be without lowering quality.")
     if grew:
         print(f"{', '.join(grew)} got worse past its margin. Simplify it, or the user lets it pass.")
+    # K4: what a change adds needs a better number or a new one; more passing tests isn't that number.
+    asks = []
+    shown_by = [n for n in news if n != "tests passing"] + [n for n, v in verdicts.items() if v["verdict"] == "better" and n != "tests passing"]
+    added = added_code(repo, sha) if rows else 0
+    if added >= ADDS and not shown_by:
+        print(f"This change adds {added} lines of code no number shows. Add a How we know row that runs it the way the user does, "
+              "from their action to what they see: each fallback, and what the screen shows after each (live: when it needs "
+              "a device or another app). Or the user says it needn't.")
+        asks.append("adds")
+    now, runs = {r["metric"] for r in rows}, {r["cmd"] for r in rows}
+    dropped = list(dict.fromkeys(r["metric"] for r in then if r["metric"] not in now and r["cmd"] not in runs))
+    if dropped:
+        print(f"Dropped from How we know: {', '.join(dropped)}. A cut nothing measures isn't kept: put it back, or the user says it can go.")
+        asks += dropped
+    for r in rows:
+        w = not old(r) and re.search(r"\b(dry|stub|fake)\b", f"{r['cmd'] or ''} {r['where']}", re.I)
+        if w:
+            print(f"{r['metric']}: its row says {w[1]}, so it doesn't run it the way the user does. Run the real thing, or say why it can't.")
     if old_caps(goals):
         print(f"GOALS.md's Caps line uses the old digits. Write it in words: {caps_line(caps)}")
     if pending and not (blocked or hard):
@@ -278,5 +330,5 @@ def done(repo, sha, branch, costly=False, print=print):
         print(f"Couldn't measure: {', '.join(unmeasured)}. It isn't done until they run clean, or the user says they needn't.")
         if any(u.endswith("(live: no before)") for u in unmeasured):
             print("A live row's before is read once, when the plan is frozen: fium done --start.")
-    return {"blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured,
+    return {"blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured, "asks": asks,
             "other_model": other_model, "failed": failed, "verdicts": verdicts, "raw": {c: raw[c] for c in costly & set(cmds)}}
