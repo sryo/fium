@@ -347,5 +347,100 @@ class Done(unittest.TestCase):
         self.assertIn("100 -> 80 (-20, -20%)", out)
         self.assertEqual(code, 0)
 
+
+# 25 lines of code a change adds: a path a user can take that, by itself, no number shows.
+APP = "".join(f"x{i} = {i}\n" for i in range(24)) + "print(1)\n"
+ROW = "| 2 | picks delivered | `app.py` | {run} |\n| 5 | tokens per task |"
+
+
+class Adds(unittest.TestCase):
+    # K4: a change that adds code needs a better number, or a new row that runs what it adds the way the user does.
+    setUp, tearDown, git, write, done = Done.setUp, Done.tearDown, Done.git, Done.write, Done.done
+
+    def feature(self, goals=None, **files):
+        self.done("--start")
+        self.git("checkout", "-q", "-b", "feature")
+        self.write(**{"app.py": APP, **files, **({"GOALS.md": goals} if goals else {})})
+        self.git("add", "."); self.git("commit", "-qm", "adds")
+        return self.done("--costly")
+
+    def test_k4_code_that_no_number_shows_leaves_the_change_open(self):
+        code, out = self.feature(**{"t.py": "print('Ran 12 tests in 0.1s')"})
+        self.assertEqual(code, 3, out)
+        self.assertIn("adds 25 lines of code no number shows", out)
+        self.assertIn("the way the user does", out, "says what row would show it")
+        self.assertIn("each fallback", out)
+        self.assertIn("what the screen shows after", out)
+
+    def test_k4_untracked_code_counts(self):
+        self.git("checkout", "-q", "-b", "feature")
+        self.write(**{"app.py": APP})
+        code, out = self.done("--costly")
+        self.assertIn("adds 25 lines of code", out, "a new file not yet added is still code the change adds")
+
+    def test_k4_a_small_change_isnt_asked(self):
+        code, out = self.feature(**{"app.py": "print(1)\n"})
+        self.assertNotIn("no number shows", out)
+
+    def test_k4_tests_benches_and_docs_arent_code_it_adds(self):
+        self.git("checkout", "-q", "-b", "feature")
+        for d in ("test", "bench"):
+            (self.d / d).mkdir()
+            self.write(**{f"{d}/x.py": APP})
+        self.write(**{"notes.md": APP})
+        self.assertNotIn("no number shows", self.done("--costly")[1])
+
+    def test_k4_a_better_number_shows_it(self):
+        code, out = self.feature(**{"m.py": "print(4)"})
+        self.assertEqual(code, 0, out)
+
+    def test_k4_a_new_row_shows_it_and_reads_new_not_couldnt_measure(self):
+        code, out = self.feature(GOALS.replace("| 5 | tokens per task |", ROW.format(run="`python3 app.py`")))
+        self.assertEqual(code, 0, out)
+        self.assertIn("new  picks delivered: 1", out)
+        self.assertNotIn("Couldn't measure", out, "a row the change adds has no base to fail at")
+
+    def test_k4_a_new_live_row_reads_new_not_no_before(self):
+        code, out = self.feature(GOALS.replace("| 5 | tokens per task |", ROW.format(run="live: `python3 app.py`")))
+        self.assertEqual(code, 0, out)
+        self.assertIn("new  picks delivered: 1", out)
+        self.assertNotIn("no before", out)
+
+    def test_k4_a_new_row_that_reads_no_number_measures_nothing(self):
+        code, out = self.feature(GOALS.replace("| 5 | tokens per task |", ROW.format(run="`python3 -c \"print('ok')\"`")))
+        self.assertEqual(code, 3, out)
+        self.assertIn("Couldn't measure: picks delivered (new row printed no number)", out)
+
+    def test_k4_a_new_row_that_fails_blocks(self):
+        code, out = self.feature(GOALS.replace("| 5 | tokens per task |", ROW.format(run="`python3 -c \"raise SystemExit(1)\"`")))
+        self.assertEqual(code, 1, out)
+
+    def test_k4_a_dry_new_row_is_named(self):
+        code, out = self.feature(GOALS.replace("| 5 | tokens per task |", ROW.format(run="`python3 app.py --dry`")))
+        self.assertIn("picks delivered: its row says dry", out)
+        self.assertIn("doesn't run it the way the user does", out)
+
+    def test_k4_a_row_dropped_since_the_base_is_a_cut_to_ask_about(self):
+        code, out = self.feature(GOALS.replace("| 6 | log lines | `l.py` | `python3 l.py \\| cat` |\n", ""), **{"app.py": "print(1)\n"})
+        self.assertEqual(code, 3, out)
+        self.assertIn("Dropped from How we know: log lines", out)
+
+    def test_k4_a_reworded_command_is_not_a_new_row(self):
+        self.write(**{"GOALS.md": GOALS.replace("`python3 m.py`", "`python3 m.py && true`")})
+        out = self.done()[1]
+        self.assertIn("same  answer time: 5", out, "the row was at the base, so it's still held to it")
+
+
+class Docs(unittest.TestCase):
+    # K4/W3: the real run is K4's row, recorded and run again; no doc still asks for an unrecorded one.
+    def test_k4_w3_the_real_run_is_a_row(self):
+        root = Path(__file__).resolve().parent.parent
+        rules, skill = (root / "RULES.md").read_text(), (root / "SKILL.md").read_text()
+        self.assertFalse("one real run" in rules + skill, "the real run is K4's row now")
+        k4 = next(l for l in rules.splitlines() if l.startswith("- **K4"))
+        for words in ("the way the user does", "each fallback", "what they see"):
+            self.assertIn(words, k4)
+
+
 if __name__ == "__main__":
     unittest.main()
