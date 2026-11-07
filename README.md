@@ -1,4 +1,9 @@
-# fium
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/fium-dark.svg">
+    <img alt="fium" src="docs/logo/fium-light.svg" width="200">
+  </picture>
+</h1>
 
 fium gives you one way to lay out, measure and improve your projects: rules your agents can cite, templates for new repos, and a checker that tells you where a repo drifts.
 
