@@ -24,6 +24,10 @@ SLOW_S, HEAVY_CHARS, SIMILAR = 60, 20000, 0.8
 WAITS = re.compile(r"^(Agent|Task|Monitor|ScheduleWakeup|AskUserQuestion|mcp__ccd_session__.*)$")
 CORRECTION = re.compile(r"^\s*(no\b|nope|don'?t|do not|stop\b|wrong|why (did|are|is|would)|never\b|i said|not (that|what)|"
                         r"instead\b|undo\b|revert\b|wait\b|that's not|thats not)", re.I)
+# Corrections that don't open the message: a rejected design, a misread, a "not a X".
+CORRECTION_ANY = re.compile(r"^\s*(no{2,}|ew+)\b|\b(ugly|not good|(is|are|looks?) (bad|wrong)|shapes are bad|not an? \w+$|"
+                            r"its not an?|it'?s not an?|you should(n'?t| not) have|misread|i insist|i (don'?t|dont) like|"
+                            r"i (don'?t|dont) trust|you'?re ruining|i expected)\b", re.I)
 WEIGHT = {"error": 1.0, "slow": 1 / 30, "heavy": 1 / 4000, "retry": 1.0, "correction": 5.0}
 TARGET = {
     "error": "error hint or helper fix: a HINTS row in every helper (or an error that names its fix), then a hint lesson",
@@ -157,7 +161,7 @@ def mine_file(path, since):
                                                    "session": sess, "ts": ts, **kw})
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
-            if not re.search(r'"(tool_use|tool_result|user|ok)"', line):
+            if not re.search(r'"(tool_use|tool_result|user|ok|queued_command)"', line):
                 continue
             try:
                 row = json.loads(line)
@@ -170,16 +174,23 @@ def mine_file(path, since):
             sess = row.get("sessionId") or row.get("session_id") or os.path.basename(path)[:-6]
             t = parse_ts(ts)
             content = msg.get("content")
+            att = row.get("attachment") or {}
+            if row.get("type") == "attachment" and att.get("type") == "queued_command" and isinstance(att.get("prompt"), str):
+                # A message the user sent while the agent worked, absorbed mid-turn.
+                row, content = dict(row, type="user"), att["prompt"]
             if row.get("type") == "user" and (isinstance(content, str) or (isinstance(content, list) and not any(
                     isinstance(c, dict) and c.get("type") == "tool_result" for c in content))):
-                said = text_of(content).strip()
+                # The app may put reminders before the person's words; a compaction summary is not a person.
+                said = re.sub(r"\A(\s*<system-reminder>.*?</system-reminder>)+", "", text_of(content), flags=re.S).strip()
+                if said.startswith("This session is being continued from a previous conversation"):
+                    continue
                 if since and t and t < since or not said or said.startswith("<") or row.get("isMeta"):
                     continue
                 if tools and not (last_use and re.search(tools, last_use["name"])):
                     continue
                 if said.startswith("[Request interrupted"):
                     sig("correction", ts, sess, sig="interrupted", text=excerpt(said), after=last_use and last_use["name"])
-                elif CORRECTION.match(said):
+                elif CORRECTION.match(said) or CORRECTION_ANY.search(said):
                     sig("correction", ts, sess, sig="correction: " + " ".join(said.lower().split()[:6]), text=excerpt(said),
                         after=last_use and last_use["name"])
                 continue
@@ -258,7 +269,14 @@ def cmd_mine(a):
     else:
         last = state().get("last_run")
         since = parse_ts(last) if last else datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=14)
-    signals = [s for p in transcripts(a.source or sources(), since) for s in mine_file(p, since)]
+    signals, seen = [], set()
+    for s in (s for p in transcripts(a.source or sources(), since) for s in mine_file(p, since)):
+        # a forked session repeats its parent's turns in another file: keep the first copy
+        key = (s["kind"], s["ts"], s.get("sig"), s.get("text"), s.get("call"))
+        if s["ts"] and key in seen:
+            continue
+        seen.add(key)
+        signals.append(s)
     signals.sort(key=lambda s: s.get("ts") or "")
     out = a.out or today_signals()
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)

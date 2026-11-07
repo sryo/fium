@@ -187,6 +187,41 @@ class Learn(unittest.TestCase):
         self.assertEqual(click["next"], {"osascript": 1, "activate_tab": 1})
         self.assertIn("tools", self.learn("--help"))
 
+    def test_mine_reads_mid_turn_messages_and_design_corrections(self):
+        # A design session: the user corrects while the agent works (queued, absorbed mid-turn)
+        # and in words that don't start with "no" or "don't".
+        def queued(ts, text):
+            return {"type": "attachment", "timestamp": ts, "sessionId": "S1",
+                    "attachment": {"type": "queued_command", "prompt": text, "origin": {"kind": "human"}, "humanTurn": True}}
+        self.write(os.path.join(self.src, "S1.jsonl"), [
+            human("2026-11-07T19:00:00Z", "explore a logo with bags of letters"),
+            use("d1", "2026-11-07T19:00:05Z", "Write", {"file_path": "gen.py"}),
+            queued("2026-11-07T19:01:00Z", "the shape of the bag follows its content, its not a tote"),
+            queued("2026-11-07T19:02:00Z", "we're doing a plastic bag, not a purse"),
+            result("d1", "2026-11-07T19:02:30Z", "ok"),
+            human("2026-11-07T19:03:00Z", "nooooo"),
+            human("2026-11-07T19:04:00Z", "ewww, the shapes are bad"),
+            human("2026-11-07T19:05:00Z", "you should not have misread me"),
+            human("2026-11-07T19:06:00Z", "b-spectrum is not good, ugly"),
+            human("2026-11-07T19:07:00Z", "yes, much better, they can be rotated"),
+            queued("2026-11-07T19:08:00Z", "and simpler shapes"),
+            human("2026-11-07T19:09:00Z", "Build all three"),
+            # the app puts a reminder before the person's words; a compaction summary is not a person
+            human("2026-11-07T19:10:00Z", [{"type": "text", "text": "<system-reminder>\nLinked sessions now\n</system-reminder>"},
+                                           {"type": "text", "text": "nooo, the stacked squares are wrong"}]),
+            human("2026-11-07T19:11:00Z", "This session is being continued from a previous conversation that ran out of context. "
+                                          "The user said it is not good"),
+        ])
+        os.remove(os.path.join(self.src, "S1", "subagents", "agent-w.jsonl"))
+        # a forked session copies the same turns into a second transcript: count them once
+        shutil.copy(os.path.join(self.src, "S1.jsonl"), os.path.join(self.src, "S1-fork.jsonl"))
+        out = os.path.join(self.tmp, "signals.jsonl")
+        self.learn("mine", "--all", "--source", self.src, "--out", out)
+        corr = [s["text"] for s in map(json.loads, Path(out).read_text().splitlines()) if s["kind"] == "correction"]
+        self.assertEqual(corr, ["the shape of the bag follows its content, its not a tote", "we're doing a plastic bag, not a purse",
+                                "nooooo", "ewww, the shapes are bad", "you should not have misread me", "b-spectrum is not good, ugly",
+                                "nooo, the stacked squares are wrong"])
+
     def test_help_defines_every_config_key_and_flag(self):
         out = self.learn("--help")
         self.assertNotIn("see RULES.md", out, "RULES.md doesn't define learn.json's keys; the help must")
