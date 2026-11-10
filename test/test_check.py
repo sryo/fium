@@ -293,7 +293,9 @@ class Docs(unittest.TestCase):
 
     def test_skill_docs_call_fium_the_way_install_puts_it(self):
         install = re.search(r"^## Install\n(.*?)(?=^## )", (ROOT / "README.md").read_text(), re.M | re.S).group(1)
-        self.assertRegex(install, r"ln -sfn ~/Documents/fium/fium \S+/fium", "Install puts fium on PATH, so bare `fium` runs anywhere")
+        self.assertIn("https://raw.githubusercontent.com/sryo/fium/main/install.sh | bash", install, "Install is install.sh's one-liner")
+        self.assertIn('link "$FIUM_DIR/fium" "$bin_dir/fium"', (ROOT / "install.sh").read_text(),
+                      "install.sh puts fium on PATH, so bare `fium` runs anywhere")
         for doc in ("README.md", "SKILL.md", "loop.md", "across.md"):
             calls = re.sub(r"(?m)^ln -sfn .*\n", "", (ROOT / doc).read_text())
             self.assertNotIn("fium/fium", calls, f"{doc} calls fium by path; one spelling, the one Install sets up")

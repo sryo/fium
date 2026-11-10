@@ -9,9 +9,7 @@ fium gives you one way to lay out, measure and improve your projects: rules your
 
 ## Install
 ```bash
-git clone https://github.com/sryo/fium ~/Documents/fium
-mkdir -p ~/.claude/skills && ln -sfn ~/Documents/fium ~/.claude/skills/fium
-ln -sfn ~/Documents/fium/fium /usr/local/bin/fium
+curl -fsSL https://raw.githubusercontent.com/sryo/fium/main/install.sh | bash
 ```
 
 ## Use

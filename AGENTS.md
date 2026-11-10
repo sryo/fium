@@ -9,6 +9,7 @@
 - `across.md`: the skill's /fium across
 - `loop.md`: the skill's unattended loop
 - `fium`: CLI entry
+- `install.sh`: the README's one-line install
 - `check.py`: check
 - `compare.py`: compare, noise, affects
 - `done.py`: done
@@ -19,7 +20,7 @@
 - `bench/`: fium's bench
 - `test/`: a file per module
 - `LICENSE`: also new's
-- `docs/logo/`: logo, made by fium.py
+- `docs/`: logo, made by docs/logo/fium.py
 
 ## Test
 ```bash
