@@ -273,6 +273,19 @@ class Docs(unittest.TestCase):
         new = (ROOT / "SKILL.md").read_text().split("## Start a new project")[1].split("## ")[0]
         self.assertIn("Build every promise README and GOALS make", new)
 
+    def test_the_agent_answers_for_the_project_and_lands_what_the_user_called_done(self):
+        # Projects made before the template said so had no such line; an agent asked "merge all" merged its own two
+        # commits, then asked about the push and about a stale branch nobody else was going to settle.
+        rules = (ROOT / "RULES.md").read_text()
+        w5 = re.search(r"^- \*\*W5\*\* .*$", rules, re.M)[0]
+        self.assertIn("The project is yours while you work in it", w5)
+        self.assertIn("landing it is yours too", w5, "the user's done (K3) is the go-ahead for the commit, merge and push")
+        self.assertIn("every branch", w5)
+        self.assertIn("merge it or discard it", w5, "a stale branch is settled, not reported")
+        self.assertIn("without asking", w5)
+        self.assertIn("Only the user decides", w5, "what stays theirs is listed, so owning isn't deciding done or deleting their data")
+        self.assertIn("(W5)", (ROOT / "SKILL.md").read_text())
+
     def test_across_keeps_the_manager_out_of_its_sessions_work(self):
         sessions = (ROOT / "across.md").read_text().split("## 3. One session per repo")[1].split("\n## ")[0]
         self.assertIn("cheaper model than yours", sessions)
