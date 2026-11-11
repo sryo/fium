@@ -247,6 +247,12 @@ class Check(unittest.TestCase):
         r = subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)
         self.assertRegex(r.stdout, r"Caps:.*ask", "the template's Caps line is a default only the user may change (K6)")
 
+    def test_new_project_tells_the_agent_the_codebase_is_its_own_to_shape(self):
+        subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)
+        agents = (Path(self.tmp.name) / "zebra" / "AGENTS.md").read_text()
+        self.assertIn("This codebase is yours to shape", agents, "without it an agent bolts onto the structure like a guest")
+        self.assertIn("named as the next change", agents, "what's outside the change stays out of it (W3)")
+
 
 ROOT = FIUM.parent
 
@@ -266,6 +272,12 @@ class Docs(unittest.TestCase):
         self.assertIn("every promise in README and GOALS", w3)
         new = (ROOT / "SKILL.md").read_text().split("## Start a new project")[1].split("## ")[0]
         self.assertIn("Build every promise README and GOALS make", new)
+
+    def test_across_keeps_the_manager_out_of_its_sessions_work(self):
+        sessions = (ROOT / "across.md").read_text().split("## 3. One session per repo")[1].split("\n## ")[0]
+        self.assertIn("cheaper model than yours", sessions)
+        self.assertIn("gets a follow-up", sessions)
+        self.assertIn("Never do its work yourself", sessions)
 
     def test_check_reports_exactly_the_ticked_rules(self):
         # A finding cites a rule that still exists, and a rule marked as checked has a check behind it.

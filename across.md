@@ -13,6 +13,8 @@ One change, or one goal, that spans several repos under `~/Documents`. You manag
 
 ## 3. One session per repo
 - Each session gets a brief with the goal, the files it owns, and what done means: the `## Test` command passes at a named commit. It cuts its own branch from the base. Never put two sessions on one repo at once.
+- Sessions run on a cheaper model than yours. The plan and the checking stay with you.
+- A session that stalls or stops short gets a follow-up, until its `## Test` command passes. Never do its work yourself; while sessions work, wait.
 - Sessions stage the paths they mean to commit, never `git add -A`. They commit in the repo's style, with no attribution (C1), and they never push or merge.
 - Keep `~/.fium/campaigns/<name>.json` up to date as `{"repos": {repo: [branch, ...]}}`.
 
