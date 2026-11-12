@@ -34,10 +34,12 @@ def main():
     pc.add_argument("--repo", help="repo whose kept runs a commit base names (default: the current directory's)")
     pc.add_argument("--json", action="store_true")
     dn = sub.add_parser("done", help="can this change merge? every How we know row, where it left the base branch and now",
-                        epilog="exit 0: merge; 1: something broke or crossed a limit; 3: something grew, the user decides")
+                        epilog="exit 0: merge; 1: something broke or crossed a limit; 3: something grew or a by-hand row has nothing recorded, the user decides")
     dn.add_argument("--base", help="branch it merges into (default: main, else master)")
     dn.add_argument("--costly", action="store_true", help="also run the costly: rows (agent evals), at the base and here")
     dn.add_argument("--start", action="store_true", help="read the live: rows now as this change's before; run it when the plan is frozen")
+    dn.add_argument("--by-hand", nargs=2, action="append", metavar=("ROW", "SAW"),
+                    help="what you looked at for a row checked by hand: words from its metric, then each case and what it shows now")
     ns = sub.add_parser("noise", help="write noise.json for compare --noise from an A/A run, to stdout")
     ns.add_argument("base"); ns.add_argument("run")
     ns.add_argument("--min", type=float, default=DEFAULT_REL, help="the least rel any metric gets (default 0.10)")

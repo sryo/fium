@@ -57,8 +57,51 @@ class Done(unittest.TestCase):
             (self.d / name).write_text(text)
 
     def done(self, *args):
+        # The fixture's by-hand row is looked at on every run, as an agent would; bare() leaves it out.
+        return self.bare(*args) if "--start" in args else self.bare("--by-hand", "screens", "looked", *args)
+
+    def bare(self, *args):
         r = subprocess.run([sys.executable, str(FIUM), "done", *args], capture_output=True, text=True, cwd=self.d)
-        return r.returncode, r.stdout
+        return r.returncode, r.stdout + r.stderr
+
+    def test_w6_a_by_hand_row_with_nothing_recorded_keeps_a_change_open(self):
+        self.bare("--start")
+        self.write(**{"m.py": "print(5)  # same number"})
+        code, out = self.bare("--costly")
+        self.assertEqual(code, 3, "nobody said what they looked at, so the user decides\n" + out)
+        self.assertIn("by hand: nothing recorded", out, "said under the row's goal")
+        self.assertIn('fium done --by-hand "screens checked"', out, "the message names the fix (S1)")
+        self.assertNotIn("can merge", out)
+
+    def test_w6_what_was_looked_at_shows_under_the_goal(self):
+        self.bare("--start")
+        self.write(**{"m.py": "print(5)  # same number"})
+        code, out = self.bare("--costly", "--by-hand", "screens", "old chart: 3 steps, labels on bars\n375, 768, 1440, both themes: all 3 steps")
+        self.assertEqual(code, 0, out)
+        goal, rest = out.split("Looks right")[1].split("Small on disk")[0], out
+        self.assertIn("by hand: old chart: 3 steps, labels on bars", goal)
+        self.assertIn("375, 768, 1440, both themes: all 3 steps", goal, "every line of it")
+        self.assertEqual(self.bare("--costly")[0], 0, "it stays recorded for this tree")
+
+    def test_w6_a_tree_that_changed_since_is_looked_at_again(self):
+        self.bare("--start")
+        self.write(**{"m.py": "print(5)  # same number"})
+        self.assertEqual(self.bare("--costly", "--by-hand", "screens", "375 and 1440")[0], 0)
+        self.write(**{"m.py": "print(5)  # another edit"})
+        code, out = self.bare("--costly")
+        self.assertEqual(code, 3, out)
+        self.assertIn("before the tree changed: 375 and 1440", out, "the old statement shows, marked stale")
+        self.write(**{"m.py": "print(5)  # same number"})
+        self.git("checkout", "-q", "-b", "feature"); self.git("commit", "-qam", "edit")
+        self.assertEqual(self.bare("--costly")[0], 0, "committing the tree that was looked at changes nothing")
+
+    def test_w6_nothing_changed_needs_no_look_and_a_row_is_named_by_its_words(self):
+        self.bare("--start")
+        code, out = self.bare("--costly")
+        self.assertEqual(code, 0, "the base itself has nothing to look at\n" + out)
+        code, out = self.bare("--costly", "--by-hand", "answer", "looked")
+        self.assertEqual(code, 1, out)
+        self.assertIn("screens checked", out, "it lists the rows checked by hand")
 
     def test_a_branch_is_measured_against_where_it_left_main_on_every_row(self):
         self.git("checkout", "-q", "-b", "feature")
@@ -355,7 +398,7 @@ ROW = "| 2 | picks delivered | `app.py` | {run} |\n| 5 | tokens per task |"
 
 class Adds(unittest.TestCase):
     # K4: a change that adds code needs a better number, or a new row that runs what it adds the way the user does.
-    setUp, tearDown, git, write, done = Done.setUp, Done.tearDown, Done.git, Done.write, Done.done
+    setUp, tearDown, git, write, done, bare = Done.setUp, Done.tearDown, Done.git, Done.write, Done.done, Done.bare
 
     def feature(self, goals=None, **files):
         self.done("--start")
@@ -440,6 +483,16 @@ class Docs(unittest.TestCase):
         k4 = next(l for l in rules.splitlines() if l.startswith("- **K4"))
         for words in ("the way the user does", "each fallback", "what they see"):
             self.assertIn(words, k4)
+
+    def test_w6_replacing_what_users_see_is_listed_first_and_rechecked(self):
+        root = Path(__file__).resolve().parent.parent
+        rules, skill = (root / "RULES.md").read_text(), (root / "SKILL.md").read_text()
+        w6 = next(l for l in rules.splitlines() if l.startswith("- **W6"))
+        for words in ("what the old one showed", "every place and size", "before you change it", "each one again", "--by-hand"):
+            self.assertIn(words, w6)
+        self.assertIn("--by-hand", next(l for l in rules.splitlines() if l.startswith("- **G2")), "what a by-hand row leaves behind")
+        self.assertIn("W6", skill)
+        self.assertIn("--by-hand", skill)
 
 
 if __name__ == "__main__":

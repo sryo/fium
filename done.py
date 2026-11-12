@@ -1,5 +1,5 @@
 """fium done: can this change merge? Every How we know row, measured where it left the base branch and now."""
-import json, re, shutil, statistics, subprocess, sys, tempfile, time
+import hashlib, json, re, shutil, statistics, subprocess, sys, tempfile, time
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -144,9 +144,13 @@ def reading(m, row):
 ADDS = 20
 
 
+def code(f):
+    # Tests, benches and docs aren't code here.
+    return Path(f).suffix in CODE_EXT and not Path(f).name.startswith(".") and not (SKIP_DIRS | {"bench"}) & set(Path(f).parts)
+
+
 def added_code(repo, sha):
-    # Net lines of code the change adds since sha, files not yet added included. Tests, benches and docs aren't code here.
-    code = lambda f: Path(f).suffix in CODE_EXT and not Path(f).name.startswith(".") and not (SKIP_DIRS | {"bench"}) & set(Path(f).parts)
+    # Net lines of code the change adds since sha, files not yet added included.
     n = 0
     for l in git(repo, "diff", "--numstat", sha).stdout.splitlines():
         a, d, f = l.split("\t", 2)
@@ -156,6 +160,33 @@ def added_code(repo, sha):
         if code(f):
             n += len((repo / f).read_text(errors="ignore").splitlines()) if (repo / f).is_file() else 0
     return n
+
+
+def changed(repo, sha):
+    # The change since sha as one hash, the same before a commit and after it; None when nothing changed. Code not yet
+    # added counts; other untracked files don't, since a bench leaves its run files there.
+    new = [f for f in git(repo, "ls-files", "--others", "--exclude-standard").stdout.splitlines() if code(f) and (repo / f).is_file()]
+    diff = git(repo, "diff", sha).stdout + "".join(f + (repo / f).read_text(errors="ignore") for f in new)
+    return hashlib.sha256(diff.encode()).hexdigest()[:16] if diff else None
+
+
+def looked(repo, sha):
+    # What was looked at for each by-hand row of this change (W6), kept beside the base's cache, never in the repo (K3).
+    f = runs_dir(repo) / f"done-{sha}.hand.json"
+    return f, (json.loads(f.read_text()) if f.exists() else {})
+
+
+def look(repo, sha, notes):
+    f, have = looked(repo, sha)
+    by_hand = [r["metric"] for r in how_we_know((repo / "GOALS.md").read_text() if (repo / "GOALS.md").exists() else "") if not r["cmd"]]
+    for words, saw in notes:
+        rows = [m for m in by_hand if words.lower() in m.lower()]
+        if len(rows) != 1 or not saw.strip():
+            sys.exit(f'fium done --by-hand "{words}": name one row checked by hand by words from its metric, then what you looked at. '
+                     f"The rows: {'; '.join(by_hand) or 'none'}")
+        have[rows[0]] = {"saw": saw.strip(), "change": changed(repo, sha)}
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(have))
 
 
 def short(cmd):
@@ -171,10 +202,13 @@ def done_main(a):
     branch = base_branch(repo, a.base)
     if a.start:
         sys.exit(start(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip()))
-    res = done(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip(), branch, a.costly)
+    sha = git(repo, "merge-base", branch, "HEAD").stdout.strip()
+    if a.by_hand:
+        look(repo, sha, a.by_hand)
+    res = done(repo, sha, branch, a.costly)
     if res["blocked"] or res["hard"] or res["other_model"]:
         sys.exit(1)
-    if res["grew"] or res["pending"] or res["unmeasured"] or res["asks"]:
+    if res["grew"] or res["pending"] or res["unmeasured"] or res["asks"] or res["unseen"]:
         sys.exit(3)
     print("Nothing got worse past its cap and nothing broke: it can merge.")
 
@@ -184,6 +218,8 @@ def done(repo, sha, branch, costly=False, print=print):
     goals = (repo / "GOALS.md").read_text() if (repo / "GOALS.md").exists() else ""
     rows = how_we_know(goals)
     dirty = bool(git(repo, "status", "--porcelain").stdout.strip())
+    # Read before any row runs: a bench may write into the tree.
+    now_change, saw, unseen = changed(repo, sha), looked(repo, sha)[1], []
     label = {}
     for r in rows:
         label.setdefault(r["cmd"], r["metric"])
@@ -230,7 +266,18 @@ def done(repo, sha, branch, costly=False, print=print):
         print(f"  {r['metric']}")
         c = r["cmd"]
         if not c:
-            print(f"       {r['by_hand'] or 'no Run cell'}: check it yourself")
+            # A row nobody can run is satisfied only by what was looked at for this change, shown here (W6).
+            s = saw.get(r["metric"])
+            how = r["by_hand"] or "no Run cell"
+            if not now_change:
+                print(f"       {how}: nothing changed since {branch}")
+            elif s:
+                fresh_look = s["change"] == now_change
+                print(f"       {how}{'' if fresh_look else ', before the tree changed'}: " + s["saw"].replace("\n", "\n         "))
+                unseen += [] if fresh_look else [r["metric"]]
+            else:
+                print(f"       {how}: nothing recorded")
+                unseen.append(r["metric"])
             continue
         if r["kind"] == "live":
             got = here[c]["metrics"]
@@ -333,5 +380,9 @@ def done(repo, sha, branch, costly=False, print=print):
         print(f"Couldn't measure: {', '.join(unmeasured)}. It isn't done until they run clean, or the user says they needn't.")
         if any(u.endswith("(live: no before)") for u in unmeasured):
             print("A live row's before is read once, when the plan is frozen: fium done --start.")
-    return {"blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured, "asks": asks,
+    if unseen:
+        print(f"Not checked by hand: {', '.join(unseen)}. List what the old one showed and every place and size it shows, look at "
+              f'each one as it is now, then say what you saw: fium done --by-hand "{unseen[0]}" "<each case and what it shows>". '
+              "Or the user says it needn't.")
+    return {"unseen": unseen, "blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured, "asks": asks,
             "other_model": other_model, "failed": failed, "verdicts": verdicts, "raw": {c: raw[c] for c in costly & set(cmds)}}

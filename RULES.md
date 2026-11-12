@@ -12,7 +12,7 @@ How every project here is laid out, measured and improved. Each rule has an id f
 
 ## Goals (G)
 - **G1 ✓** GOALS.md keeps templates/GOALS.md's sections, goals in priority order.
-- **G2 ✓** Every goal has a How we know row: Goal | Metric | Where | Run. Where measures it, or "manual". Run is what `fium done` runs (K3): `` `cmd` ``, `` costly: `cmd` `` (only with `--costly`), `` live: `cmd` ``, or by hand. A command's last line is a run file (K1) or a number.
+- **G2 ✓** Every goal has a How we know row: Goal | Metric | Where | Run. Where measures it, or "manual". Run is what `fium done` runs (K3): `` `cmd` ``, `` costly: `cmd` `` (only with `--costly`), `` live: `cmd` ``, or by hand, which passes only on what was looked at for this change, said with `fium done --by-hand` (W6). A command's last line is a run file (K1) or a number.
 
 ## README (R)
 A README is for someone deciding whether they want this, and then using it. It says why it's useful and how to use it, in plain words. Use rooms, avis and perch as models.
@@ -39,6 +39,7 @@ How a change goes from an idea to done.
 - **W3** One goal, about 100 lines besides tests; "for now" is another change. Done is every R green and its row (K4) run for real, checked against what the user first asked; for a project or its README, every promise in README and GOALS, built and measured or cut on the user's OK. Until then, keep working without asking. A problem the change caused is never deferred.
 - **W4** Tell the user things in their words: a goal by its name, a rule by what it says, each number with what it measures and its before → after. Never a goal's number, a rule's id or a cap's level. Say which paths ran for real.
 - **W5** The project is yours while you work in it: you answer for all of it, not only your change. Once the user says a change is done (K3), landing it is yours too: commit, merge, push and clear its branches and worktrees, without asking. "Merge" means every branch: a stale one is yours to settle, so merge it or discard it, keeping what still passes, and say what you did. Only the user decides done (K3), the caps (K5), and anything that deletes their data or rewrites history.
+- **W6** A change that replaces or restructures something users see starts with a list, made before you change it: what the old one showed, and every place and size it shows (each screen, width, theme and state). Change it, then look at each one again and say what each shows now: `fium done --by-hand "<row>" "<the list>"`. That list is the by-hand row's evidence, shown under its goal; without it, or once the tree changes after it, the change stays open.
 
 ## Learning (S)
 - **S1** Put the fix where the agent is when it fails. An error message that names the fix beats a line in a doc. An error or empty state a user sees says what happened and what to do next. When a failure comes back after its fix, move the fix closer to that point.
