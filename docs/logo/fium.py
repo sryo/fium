@@ -64,6 +64,32 @@ def mark(paint, pad=4, css=None):
     return "\n".join(out)
 
 
+def stretch(paint, height=109):
+    """The mark at a fixed height with a trail as long as the width it is given.
+    The tail holds the left edge, the F the right, and a band joins them.
+    Drawn narrower than the plain mark, the pieces overlap."""
+    inner = mark(paint)
+    x0, y0, w, h = [float(v) for v in inner.split('viewBox="')[1].split('"')[0].split()]
+    body = inner.split(">", 1)[1].rsplit("</svg>", 1)[0]
+    s = height / h
+    f, _ = shapes()
+    # the trail's far end is the F's hull; past its top and bottom corners the trail is a full-height band
+    tail = [(x - TRAIL, y) for x, y in hull([q for p in f for q in p])]
+    top, bottom = min(tail, key=lambda p: p[1]), max(tail, key=lambda p: p[1])
+    edge = max(top[0], bottom[0])
+    tail = hull(tail + [(edge, top[1]), (edge, bottom[1])])
+    start = (edge - x0) * s
+    mid, thick = ((top[1] + bottom[1]) / 2 - y0) * s, (bottom[1] - top[1]) * s
+    # no viewBox, so a unit is a pixel and 100% is the right edge; the band is a line to 100%
+    # shifted left by the room the F's piece takes, which a percentage alone cannot subtract
+    room = w * s - start
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="{height}">\n'
+            f'<path d="{d([[((x - x0) * s, (y - y0) * s) for x, y in tail]])}" fill="{paint}"/>\n'
+            f'<line x1="{start + room - 1:.1f}" x2="100%" y1="{mid:.1f}" y2="{mid:.1f}" stroke="{paint}" stroke-width="{thick:.1f}" transform="translate({-room:.1f})"/>\n'
+            f'<svg x="100%" overflow="visible"><g transform="scale({s:.5f}) translate({-(x0 + w):.1f} {-y0:.1f})">{body}</g></svg>\n'
+            f'</svg>')
+
+
 def icon(bg, fg, size=512, scale=0.8):
     """The mark centred in a squircle tile."""
     inner = mark(fg, pad=0)
@@ -83,5 +109,7 @@ if __name__ == "__main__":
     def save(name, s): open(os.path.join(outdir, name), "w").write(s + "\n")
     save("fium-light.svg", mark(LIGHT))
     save("fium-dark.svg", mark(DARK))
+    save("fium-wide-light.svg", stretch(LIGHT))
+    save("fium-wide-dark.svg", stretch(DARK))
     save("fium.svg", mark(None, css=f".m{{fill:{LIGHT}}}@media (prefers-color-scheme:dark){{.m{{fill:{DARK}}}}}"))
     save("fium-icon.svg", icon(PAPER, TERRACOTTA))

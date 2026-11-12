@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="109">
+<path d="M1.6 44.4L14.2 31.9L44.4 1.6L64.6 1.6L73.4 50.7L77.2 94.8L64.6 107.4L28.1 70.9L14.2 57.0Z" fill="#1d1c1a"/>
+<line x1="199.2" x2="100%" y1="54.5" y2="54.5" stroke="#1d1c1a" stroke-width="105.8" transform="translate(-135.6)"/>
+<svg x="100%" overflow="visible"><g transform="scale(0.40475) translate(-134.8 24.7)">
+<defs><mask id="gap" maskUnits="userSpaceOnUse" x="-378" y="-43" width="531" height="305"><rect x="-378" y="-43" width="531" height="305" fill="#fff"/><path d="M-55.9 85.1L-24.8 54.0L49.9 -20.7L81.0 10.4L121.5 100.7L130.8 209.6L99.7 240.7L9.5 150.4L-24.8 116.2Z" fill="#000" stroke="#000" stroke-width="36"/></mask></defs>
+<path d="M-355.9 85.1L-324.8 54.0L-24.8 54.0L130.8 209.6L99.7 240.7L-200.3 240.7ZM-355.9 85.1L-250.1 -20.7L49.9 -20.7L81.0 10.4L-24.8 116.2L-324.8 116.2ZM-290.5 150.4L-209.6 69.6L90.4 69.6L121.5 100.7L40.6 181.6L-259.4 181.6Z" fill="#1d1c1a" mask="url(#gap)"/>
+<path d="M-55.9 85.1L-24.8 54.0L130.8 209.6L99.7 240.7ZM-55.9 85.1L49.9 -20.7L81.0 10.4L-24.8 116.2ZM9.5 150.4L90.4 69.6L121.5 100.7L40.6 181.6Z" fill="#1d1c1a"/>
+</g></svg>
+</svg>

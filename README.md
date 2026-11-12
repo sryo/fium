@@ -1,7 +1,7 @@
 <h1>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/fium-dark.svg">
-    <img alt="fium" src="docs/logo/fium-light.svg" width="200">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/fium-wide-dark.svg">
+    <img alt="fium" src="docs/logo/fium-wide-light.svg" width="100%">
   </picture>
 </h1>
 
