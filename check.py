@@ -19,6 +19,11 @@ def check_files(root):
     for name in ("README.md", "GOALS.md", "LICENSE"):
         if not (root / name).exists():
             out.append(finding("F1", "error", name, "missing", f"copy templates/{name}"))
+    ignore = root / ".gitignore"
+    if not ignore.exists():
+        out.append(finding("F1", "error", ".gitignore", "missing", "copy templates/.gitignore"))
+    elif ".DS_Store" not in ignore.read_text():
+        out.append(finding("F1", "error", ".gitignore", "lets Finder's .DS_Store into git", "add a .DS_Store line"))
     return out
 
 

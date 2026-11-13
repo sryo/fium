@@ -42,7 +42,7 @@ Run it.
 AGENTS = "# demo\n\n## Test\n```bash\nmake test\n```\nA change is done when `fium done` says so.\n"
 
 def make(root, **over):
-    files = {"AGENTS.md": AGENTS, "README.md": README, "GOALS.md": GOALS, "LICENSE": "x\n"}
+    files = {"AGENTS.md": AGENTS, "README.md": README, "GOALS.md": GOALS, "LICENSE": "x\n", ".gitignore": ".DS_Store\n"}
     files.update(over)
     for name, body in files.items():
         if body is None:
@@ -81,10 +81,18 @@ class Check(unittest.TestCase):
         self.assertEqual(f, [])
 
     def test_missing_files(self):
-        make(self.root, **{"GOALS.md": None, "LICENSE": None, "README.md": None})
+        make(self.root, **{"GOALS.md": None, "LICENSE": None, "README.md": None, ".gitignore": None})
         code, f = check(self.root)
         self.assertEqual(code, 1)
-        self.assertEqual({x["file"] for x in f if x["rule"] == "F1"}, {"GOALS.md", "LICENSE", "README.md"})
+        self.assertEqual({x["file"] for x in f if x["rule"] == "F1"}, {"GOALS.md", "LICENSE", "README.md", ".gitignore"})
+
+    def test_gitignore_keeps_finder_files_out(self):
+        make(self.root, **{".gitignore": "node_modules\n"})
+        code, f = check(self.root)
+        self.assertEqual(code, 1)
+        hit = [x for x in f if x["rule"] == "F1"][0]
+        self.assertEqual(hit["file"], ".gitignore")
+        self.assertIn(".DS_Store", hit["fix"])
 
     def test_claude_must_be_symlink(self):
         make(self.root, **{"CLAUDE.md": "See [AGENTS.md](./AGENTS.md).\n"})
@@ -236,6 +244,7 @@ class Check(unittest.TestCase):
         self.assertEqual((root / "LICENSE").read_text(), (FIUM.parent / "LICENSE").read_text())
         self.assertNotIn("NAME", (root / "README.md").read_text())
         self.assertFalse((root / "DESIGN.md").exists())
+        self.assertIn(".DS_Store", (root / ".gitignore").read_text())
         code, f = check(root)
         self.assertEqual(rules(f, "error"), set())
         self.assertEqual(code, 0)

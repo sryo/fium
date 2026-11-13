@@ -5,7 +5,7 @@ How every project here is laid out, measured and improved. Each rule has an id f
 **P1 The aim.** Simple, cheap on resources, reasonably fast, never in the user's way. It settles any conflict between rules.
 
 ## Files (F)
-- **F1 ✓** Every project has `AGENTS.md` (never `AGENT.md`) with how it's built and tested, `README.md` (R), `GOALS.md` (G) and `LICENSE`, sryo's by default.
+- **F1 ✓** Every project has `AGENTS.md` (never `AGENT.md`) with how it's built and tested, `README.md` (R), `GOALS.md` (G), `LICENSE`, sryo's by default, and a `.gitignore` that lists `.DS_Store`.
 - **F2 ✓** `CLAUDE.md` is a symlink to `AGENTS.md`.
 - **F3 ✓** AGENTS.md has a `## Test` section with the command that runs the tests.
 - **F4 ✓** A project's own checks go in `bench/checks`, one command per line; `fium check --all` fails the project when one fails.

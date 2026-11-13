@@ -20,6 +20,7 @@
 - `bench/`: fium's bench
 - `test/`: a file per module
 - `LICENSE`: also new's
+- `.gitignore`: what git never tracks
 - `docs/`: logo, made by docs/logo/fium.py
 
 ## Test
