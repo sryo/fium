@@ -43,13 +43,23 @@ class Try(Repo):
         rows = [json.loads(l) for l in (Path(self.tmp.name) / "home" / "runs" / "demo" / "tries.jsonl").read_text().splitlines()]
         self.assertEqual([r["files"] for r in rows], [["SKILL.md"], ["tool.py"]], "each attempt remembers what it touched")
 
-    def test_five_attempts_in_a_row_with_no_keep_say_stop_or_change_approach(self):
+    def test_five_misses_ask_for_a_look_at_what_blocks_and_five_more_after_it_stop(self):
         self.fium("baseline", "--record", "keep")
         for i in range(4):
             self.fium(f"idea {i}", "--record", "discard", "--reason", "worse")
-        self.assertNotIn("stop or change approach", self.fium()[1])
+        self.assertNotIn("in a row", self.fium()[1])
         self.fium("idea 4", "--record", "crash", "--reason", "tests fail")
-        self.assertIn("5 in a row with no keep: stop or change approach", self.fium()[1])
+        out = self.fium()[1]
+        self.assertIn("5 in a row with no keep: find what blocks it", out, "a stall gets one look at its cause before the loop gives up")
+        self.assertIn('--record review', out, "it says how to log what was found")
+        self.assertNotIn("stop", out)
+        self.fium("the check reruns the whole build; caching it would show smaller wins", "--record", "review")
+        self.assertNotIn("in a row", self.fium()[1], "the review starts a fresh count")
+        for i in range(5):
+            self.fium(f"after {i}", "--record", "discard", "--reason", "worse")
+        self.assertIn("5 in a row with no keep since the review: stop.", self.fium()[1])
+        self.fium("found more", "--record", "review")
+        self.assertIn("since the review: stop", self.fium()[1], "a second review with no keep between them doesn't buy more attempts")
 
     def test_ideas_dropped_before_that_touched_the_same_files_are_shown_before_trying_again(self):
         self.fium("baseline", "--record", "keep")

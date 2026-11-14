@@ -8,7 +8,7 @@ from compare import change, globs, runs_dir
 import done as done_module
 from done import base_branch, done
 
-STATUSES = ("keep", "discard", "crash", "retest", "park", "confirm")
+STATUSES = ("keep", "discard", "crash", "retest", "park", "confirm", "review")
 # What judges an attempt: an attempt may add to it (a new scorer checks more) but never change it.
 JUDGE = ["bench/*", "test/*", "tests/*", "*noise.json", "*baseline.json"]
 STOP_AFTER = 5
@@ -40,13 +40,11 @@ def record(repo, idea, status, reason="", **more):
     return row
 
 
-def since_keep(rows):
-    n = 0
-    for r in reversed(rows):
-        if r["status"] == "keep":
-            break
-        n += r["status"] not in ("retest", "confirm")
-    return n
+def stalled(rows):
+    # Misses since the last keep, or since the first look at what blocks it (a review), and whether there was one.
+    since = rows[max((i for i, r in enumerate(rows) if r["status"] == "keep"), default=-1) + 1:]
+    looked = next((i for i, r in enumerate(since) if r["status"] == "review"), None)
+    return sum(r["status"] not in ("retest", "confirm", "review") for r in since[0 if looked is None else looked + 1:]), looked is not None
 
 
 def changes(repo, rows):
@@ -157,8 +155,10 @@ def try_main(a):
     print(f"fium try: {repo.name}, {len(rows)} attempts, {kept} of {decided} kept")
     for r in rows:
         print(f"  {r['status']:<8} {r['commit'][:7]}  {r['idea']}" + (f": {r['reason']}" if r.get("reason") else ""))
-    if since_keep(rows) >= STOP_AFTER:
-        print(f"{since_keep(rows)} in a row with no keep: stop or change approach.")
+    n, looked = stalled(rows)
+    if n >= STOP_AFTER:
+        print(f"{n} in a row with no keep since the review: stop." if looked else f"{n} in a row with no keep: find what blocks it before "
+              'trying more. Profile it and work out the best this design can reach, then log it: fium try "<what you found>" --record review')
     mine = {f for _, f in changes(repo, rows)}
     # Another loop's drops still teach this one what failed on the same files.
     seen = [r for r in every if r["status"] in ("discard", "crash", "park") and mine & set(r.get("files", []))]
