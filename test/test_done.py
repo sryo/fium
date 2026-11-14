@@ -383,6 +383,13 @@ class Done(unittest.TestCase):
         self.assertIn("fails", out)
         self.assertEqual(code, 1)
 
+    def test_a_command_that_hangs_is_stopped_and_says_so(self):
+        # It hangs in a child it started, as a dev server or a stuck eval would, so the whole group must go.
+        self.write(**{"t.py": "import subprocess; subprocess.run(['sleep', '30'])"})
+        code, out = self.done("--timeout", "1")
+        self.assertIn("timed out after 1s", out, "a hung row is named, not waited on")
+        self.assertEqual(code, 1)
+
     def test_costly_rows_run_only_when_asked_and_are_compared(self):
         self.done("--start")
         self.write(**{"e.py": "print(80)"})

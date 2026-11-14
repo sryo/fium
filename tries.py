@@ -5,6 +5,7 @@ from pathlib import Path
 
 from check import git
 from compare import change, globs, runs_dir
+import done as done_module
 from done import base_branch, done
 
 STATUSES = ("keep", "discard", "crash", "retest", "park", "confirm")
@@ -22,6 +23,9 @@ def read(repo):
     return [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.exists() else []
 
 
+branch_of = lambda repo: git(repo, "branch", "--show-current").stdout.strip()
+
+
 def touched(repo, commit):
     return git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", commit).stdout.split()
 
@@ -29,7 +33,7 @@ def touched(repo, commit):
 def record(repo, idea, status, reason="", **more):
     sha = git(repo, "rev-parse", "HEAD").stdout.strip()
     row = {"commit": sha, "parent": git(repo, "rev-parse", "-q", "--verify", "HEAD~1").stdout.strip() or None,
-           "idea": idea, "status": status, "reason": reason, "files": touched(repo, sha), **more}
+           "branch": branch_of(repo), "idea": idea, "status": status, "reason": reason, "files": touched(repo, sha), **more}
     log_path(repo).parent.mkdir(parents=True, exist_ok=True)
     with log_path(repo).open("a") as f:
         f.write(json.dumps(row) + "\n")
@@ -133,8 +137,12 @@ def confirm(repo, rows, a):
 
 
 def try_main(a):
+    done_module.TIMEOUT = a.timeout
     repo = Path(git(".", "rev-parse", "--show-toplevel").stdout.strip() or ".").resolve()
-    rows = read(repo)
+    every = read(repo)
+    # Every worktree of a repo logs to one file, so each loop reads only the attempts made on its own branch.
+    here = branch_of(repo)
+    rows = [r for r in every if r.get("branch") == here]
     if judge_changed(repo, rows):
         sys.exit(f"This attempt changes the judge: {', '.join(judge_changed(repo, rows))}. Revert it; an attempt can't change how it's judged (bench/judge).")
     if a.confirm:
@@ -152,7 +160,8 @@ def try_main(a):
     if since_keep(rows) >= STOP_AFTER:
         print(f"{since_keep(rows)} in a row with no keep: stop or change approach.")
     mine = {f for _, f in changes(repo, rows)}
-    seen = [r for r in rows if r["status"] in ("discard", "crash", "park") and mine & set(r.get("files", []))]
+    # Another loop's drops still teach this one what failed on the same files.
+    seen = [r for r in every if r["status"] in ("discard", "crash", "park") and mine & set(r.get("files", []))]
     if seen:
         print("Dropped before, touching what you changed:")
         for r in seen:

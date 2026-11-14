@@ -1,5 +1,5 @@
 """fium done: can this change merge? Every How we know row, measured where it left the base branch and now."""
-import hashlib, json, re, shutil, statistics, subprocess, sys, tempfile, time
+import hashlib, json, os, re, shutil, signal, statistics, subprocess, sys, tempfile, time
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -29,12 +29,22 @@ def how_we_know(goals):
     return rows
 
 
+# Seconds a row's command may run before it and everything it started are stopped (fium done --timeout).
+TIMEOUT = 3600
+
+
 def execute(cmd, cwd):
     # What a command printed, kept raw so a cached base is read the same way as a fresh one.
     t = time.monotonic()
-    r = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True)
-    raw = {"code": r.returncode, "s": round(time.monotonic() - t, 2), "out": r.stdout[-20000:], "err": r.stderr[-20000:]}
-    lines = r.stdout.strip().splitlines()
+    p = subprocess.Popen(cmd, shell=True, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        (out, err), hung = p.communicate(timeout=TIMEOUT), None
+    except subprocess.TimeoutExpired:
+        # Its own session holds whatever it started, so a server or an eval it left behind goes too.
+        os.killpg(p.pid, signal.SIGKILL)
+        (out, err), hung = p.communicate(), TIMEOUT
+    raw = {"code": 124 if hung else p.returncode, "s": round(time.monotonic() - t, 2), "out": out[-20000:], "err": err[-20000:], "timeout": hung}
+    lines = out.strip().splitlines()
     last = lines[-1].strip() if lines else ""
     if last.endswith(".json") and (Path(cwd) / last).is_file():
         raw["run"] = json.loads((Path(cwd) / last).read_text())
@@ -43,7 +53,7 @@ def execute(cmd, cwd):
 
 def measure(raw, name):
     # A command's last line is either a run file (RULES.md K1), whose metrics count, or a number, named after its row.
-    out = {"ok": raw["code"] == 0, "s": raw["s"], "metrics": {}, "limits": {}}
+    out = {"ok": raw["code"] == 0, "s": raw["s"], "metrics": {}, "limits": {}, "fails": f"timed out after {raw['timeout']}s" if raw.get("timeout") else "fails"}
     lines = raw["out"].strip().splitlines()
     last = lines[-1].strip() if lines else ""
     if "run" in raw:
@@ -198,6 +208,8 @@ def base_branch(repo, base=None):
 
 
 def done_main(a):
+    global TIMEOUT
+    TIMEOUT = a.timeout
     repo = Path(git(".", "rev-parse", "--show-toplevel").stdout.strip() or ".").resolve()
     branch = base_branch(repo, a.base)
     if a.start:
@@ -281,7 +293,7 @@ def done(repo, sha, branch, costly=False, print=print):
             continue
         if r["kind"] == "live":
             got = here[c]["metrics"]
-            print(f"       live `{short(c)}`: " + (reading(here[c], r) + " now" if got else ("" if here[c]["ok"] else "fails, ")
+            print(f"       live `{short(c)}`: " + (reading(here[c], r) + " now" if got else ("" if here[c]["ok"] else here[c]["fails"] + ", ")
                                                      + (here[c].get("last") or "no output")))
             # Live state is the row's only reading, so a row that read no number measured nothing.
             unmeasured.append(f"{r['metric']} (live: {'no before' if got else 'printed no number' if here[c]['ok'] else 'fails'})")
@@ -292,9 +304,9 @@ def done(repo, sha, branch, costly=False, print=print):
             continue
         b, h = base[c], here[c]
         i = rows.index(r)
-        state = ("ok" if b["ok"] else "ok now, failed at the base") if h["ok"] else "fails" + ("" if b["ok"] else " (failed at the base too)")
+        state = ("ok" if b["ok"] else "ok now, failed at the base") if h["ok"] else h["fails"] + ("" if b["ok"] else " (failed at the base too)")
         if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live") and c in new_row:
-            print(f"       `{short(c)}`: new row, {'ok' if h['ok'] else 'fails'}, {h['s']:g}s")
+            print(f"       `{short(c)}`: new row, {'ok' if h['ok'] else h['fails']}, {h['s']:g}s")
             if h["ok"] and not h["metrics"]:
                 unmeasured += [f"{x['metric']} (new row printed no number)" for x in rows if x["cmd"] == c]
             elif not h["ok"]:

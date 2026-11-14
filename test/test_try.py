@@ -160,6 +160,24 @@ class Keep(Repo):
     def log(self):
         return (Path(self.tmp.name) / "home" / "runs" / "demo" / "tries.jsonl").read_text().splitlines()
 
+    def test_each_loop_is_judged_against_its_own_keeps_not_another_worktrees(self):
+        self.attempt("drop a line", **{"tool.py": "a\nb\n"})
+        other = Path(self.tmp.name) / "demo-loop-2"
+        self.git("worktree", "add", "-q", str(other), "-b", "loop2", "main")
+        run = lambda *a: subprocess.run([sys.executable, str(FIUM), "try", *a], capture_output=True, text=True, cwd=other, env=self.env)
+        # Both loops log at once: neither may lose or tear the other's lines.
+        both = [subprocess.Popen([sys.executable, str(FIUM), "try", f"{w} {i}", "--record", "discard"], cwd=c, env=self.env,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for i in range(5) for w, c in (("a", self.d), ("b", other))]
+        [p.wait() for p in both]
+        self.assertEqual(len([json.loads(l) for l in self.log()]), 12, "every line from both loops is whole")
+        (other / "tool.py").write_text("a\nb\n")
+        subprocess.run(["git", "-C", str(other), "commit", "-qam", "drop a line"], check=True)
+        out = run("drop a line").stdout
+        self.assertEqual(out.strip().splitlines()[-1], "keep", out + "\nthe other loop's keep isn't this one's base: loc is 3 -> 2 since main")
+        listed = run().stdout
+        self.assertNotIn("a 0", listed, "this loop's list is its own attempts")
+        self.assertIn("5 in a row with no keep", self.fium()[1], "each loop counts its own misses; the other's keep doesn't reset them")
+
 
 # An agent eval: what it spends now varies run to run (TOKENS; the base's run spends 100), and each run is counted.
 EVAL = """import os
