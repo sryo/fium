@@ -23,6 +23,7 @@ A README is for someone deciding whether they want this, and then using it. It s
 ## Live runs (L)
 - **L1** Before a live run, state its cost in tokens, turns and wall time, never dollars.
 - **L2** A live run covers only the tasks `fium affects <base>..HEAD` names, at 2 reps; a third only when they disagree, 3 to refresh a baseline. Read the transcripts you have first and batch fixes into one run.
+- **L3** A check that opens a window or drives a browser runs where the user isn't looking: headless, on a loft (perch `new_tab {loft:"WxH"}`) or in a room. Never in their tabs, windows or front app; looking at a screen (W6) counts. One that has to take the front (a device, another app) runs `fium away` first and goes on only when it exits 0; otherwise it stops and its row reads as not measured.
 
 ## Cost (K)
 A change is done when the user has seen what it did to each of the project's own metrics and says it can merge. `fium done` measures them; something that broke or crossed a limit blocks it.
@@ -40,6 +41,7 @@ How a change goes from an idea to done.
 - **W4** Tell the user things in their words: a goal by its name, a rule by what it says, each number with what it measures and its before → after. Never a goal's number, a rule's id or a cap's level. Say which paths ran for real.
 - **W5** The project is yours while you work in it, not only your change. Once the user says done (K3), landing it is yours too, without asking: commit, merge, push, clear its branches and worktrees. "Merge" means every branch: merge it or discard it if stale, keeping what passes, and say which. Only the user decides done, the caps (K5), and anything that deletes their data or rewrites history.
 - **W6** For anything users see, before you change it list what the old one showed and every place and size it shows (each screen, width, theme and state). After, look at each one again and record what it shows now: `fium done --by-hand "<row>" "<the list>"`. Without that list for the current tree, a by-hand row stays open.
+- **W7** Anything several agents or processes can call at once gets a test with several callers at once. A race shows only then.
 
 ## Learning (S)
 - **S1** Put the fix where the agent is when it fails. An error message that names the fix beats a line in a doc. An error or empty state a user sees says what happened and what to do next. When a failure comes back after its fix, move the fix closer to that point.

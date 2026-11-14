@@ -15,6 +15,7 @@
 - `done.py`: done
 - `tries.py`: try
 - `repos.py`: survey, status, grep, new
+- `away.py`: away
 - `learn.py`: learn
 - `templates/`: what new copies
 - `bench/`: fium's bench

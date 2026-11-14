@@ -5,6 +5,7 @@ from pathlib import Path
 
 HOME = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOME))
+from away import away_main  # noqa: E402
 from check import check, own_checks  # noqa: E402
 from compare import DEFAULT_REL, compare_main, noise, affects_main  # noqa: E402
 from done import done_main  # noqa: E402
@@ -64,9 +65,13 @@ def main():
     st.add_argument("path", nargs="?", default="~/Documents")
     st.add_argument("--campaign", help="~/.fium/campaigns/<name>.json: rerun its branches' ## Test commands and print cleanup for its merged ones")
     st.add_argument("--json", action="store_true")
+    sub.add_parser("away", help="is the user away from this Mac? exit 0: away (locked, or 5 quiet minutes with nothing of theirs "
+                                "keeping the display awake); 1: present. A check that takes the front runs only while away")
     gp = sub.add_parser("grep", help="search every repo under a folder at its base branch, not at a worktree's")
     gp.add_argument("pattern"); gp.add_argument("path", nargs="?", default="~/Documents")
     a = ap.parse_args()
+    if a.cmd == "away":
+        return away_main()
     if a.cmd == "status":
         return status_main(a)
     if a.cmd == "grep":
