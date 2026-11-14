@@ -16,6 +16,7 @@
 - `tries.py`: try
 - `repos.py`: survey, status, grep, new
 - `away.py`: away
+- `replycheck.py`: replycheck
 - `learn.py`: learn
 - `templates/`: what new copies
 - `bench/`: fium's bench

@@ -6,6 +6,7 @@ from pathlib import Path
 HOME = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOME))
 from away import away_main  # noqa: E402
+from replycheck import replycheck_main  # noqa: E402
 from check import check, own_checks  # noqa: E402
 from compare import DEFAULT_REL, compare_main, noise, affects_main  # noqa: E402
 from done import done_main  # noqa: E402
@@ -69,11 +70,15 @@ def main():
     st.add_argument("--json", action="store_true")
     sub.add_parser("away", help="is the user away from this Mac? exit 0: away (locked, or 5 quiet minutes with nothing of theirs "
                                 "keeping the display awake); 1: present. A check that takes the front runs only while away")
+    sub.add_parser("replycheck", help="a turn-end hook: reads the hook's JSON on stdin and sends the reply back when it carries "
+                                      "a rule's id, a goal's number or a cap's level")
     gp = sub.add_parser("grep", help="search every repo under a folder at its base branch, not at a worktree's")
     gp.add_argument("pattern"); gp.add_argument("path", nargs="?", default="~/Documents")
     a = ap.parse_args()
     if a.cmd == "away":
         return away_main()
+    if a.cmd == "replycheck":
+        return replycheck_main()
     if a.cmd == "status":
         return status_main(a)
     if a.cmd == "grep":
