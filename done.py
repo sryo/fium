@@ -180,6 +180,17 @@ def changed(repo, sha):
     return hashlib.sha256(diff.encode()).hexdigest()[:16] if diff else None
 
 
+def paths(where):
+    # The files a by-hand row covers: its Where cell's backticked paths or globs. A command (it has a space) isn't one.
+    return [w for w in re.findall(r"`([^`]+)`", where) if " " not in w]
+
+
+def touched(repo, sha, globs):
+    # Whether the change since sha, files not yet added included, touches any of globs.
+    files = git(repo, "diff", "--name-only", sha).stdout.splitlines() + git(repo, "ls-files", "--others", "--exclude-standard").stdout.splitlines()
+    return any(fnmatch(f, g) for f in files for g in globs)
+
+
 def looked(repo, sha):
     # What was looked at for each by-hand row of this change (W6), kept beside the base's cache, never in the repo (K3).
     f = runs_dir(repo) / f"done-{sha}.hand.json"
@@ -281,8 +292,11 @@ def done(repo, sha, branch, costly=False, print=print):
             # A row nobody can run is satisfied only by what was looked at for this change, shown here (W6).
             s = saw.get(r["metric"])
             how = r["by_hand"] or "no Run cell"
+            covers = paths(r["where"])
             if not now_change:
                 print(f"       {how}: nothing changed since {branch}")
+            elif covers and not touched(repo, sha, covers):
+                print(f"       {how}: nothing changed in {', '.join(covers)}")
             elif s:
                 fresh_look = s["change"] == now_change
                 print(f"       {how}{'' if fresh_look else ', before the tree changed'}: " + s["saw"].replace("\n", "\n         "))

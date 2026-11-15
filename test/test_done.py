@@ -103,6 +103,20 @@ class Done(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("screens checked", out, "it lists the rows checked by hand")
 
+    def test_w6_a_by_hand_row_waits_only_on_changes_to_the_paths_its_where_names(self):
+        self.write(**{"GOALS.md": GOALS.replace("| screens checked | by eye |", "| screens checked | `ui/*` with `npm run dev` |")})
+        (self.d / "ui").mkdir(); self.write(**{"ui/a.css": "a{}"})
+        self.git("add", "."); self.git("commit", "-qm", "ui")
+        self.bare("--start")
+        self.write(**{"m.py": "print(5)  # same number"})
+        code, out = self.bare("--costly")
+        self.assertEqual(code, 0, "a change to no screen needs no look\n" + out)
+        self.assertIn("nothing changed in ui/*", out)
+        self.write(**{"ui/a.css": "a{color:red}"})
+        code, out = self.bare("--costly")
+        self.assertEqual(code, 3, out)
+        self.assertIn("nothing recorded", out)
+
     def test_a_branch_is_measured_against_where_it_left_main_on_every_row(self):
         self.git("checkout", "-q", "-b", "feature")
         self.write(**{"m.py": "print(7)"}); self.git("commit", "-qam", "slower")
