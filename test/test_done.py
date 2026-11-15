@@ -422,6 +422,11 @@ class Adds(unittest.TestCase):
         self.assertIn("each fallback", out)
         self.assertIn("what the screen shows after", out)
 
+    def test_k4_the_row_asked_for_is_the_cheapest_that_reaches_it(self):
+        out = self.feature(**{"t.py": "print('Ran 12 tests in 0.1s')"})[1]
+        self.assertIn("cheapest", out, "an e2e run isn't the default")
+        self.assertIn("headless", out)
+
     def test_k4_untracked_code_counts(self):
         self.git("checkout", "-q", "-b", "feature")
         self.write(**{"app.py": APP})
@@ -488,7 +493,7 @@ class Docs(unittest.TestCase):
         rules, skill = (root / "RULES.md").read_text(), (root / "SKILL.md").read_text()
         self.assertFalse("one real run" in rules + skill, "the real run is K4's row now")
         k4 = next(l for l in rules.splitlines() if l.startswith("- **K4"))
-        for words in ("the way the user does", "each fallback", "what they see"):
+        for words in ("the way the user does", "each fallback", "what they see", "cheapest", "headless"):
             self.assertIn(words, k4)
 
     def test_w6_replacing_what_users_see_is_listed_first_and_rechecked(self):
@@ -497,6 +502,7 @@ class Docs(unittest.TestCase):
         w6 = next(l for l in rules.splitlines() if l.startswith("- **W6"))
         for words in ("what the old one showed", "every place and size", "before you change it", "each one again", "--by-hand"):
             self.assertIn(words, w6)
+        self.assertIn("replaces or restructures", w6, "a small tweak isn't a screen-by-screen recheck")
         self.assertIn("--by-hand", next(l for l in rules.splitlines() if l.startswith("- **G2")), "what a by-hand row leaves behind")
         self.assertIn("W6", skill)
         self.assertIn("--by-hand", skill)

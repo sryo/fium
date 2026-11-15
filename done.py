@@ -372,8 +372,8 @@ def done(repo, sha, branch, costly=False, print=print):
     added = added_code(repo, sha) if rows else 0
     if added >= ADDS and not shown_by:
         print(f"This change adds {added} lines of code no number shows. Add a How we know row that runs it the way the user does, "
-              "from their action to what they see: each fallback, and what the screen shows after each (live: when it needs "
-              "a device or another app). Or the user says it needn't.")
+              "from their action to what they see: each fallback, and what the screen shows after each. Use the cheapest run "
+              "that gets there, headless; live: only when nothing cheaper reaches it. Or the user says it needn't.")
         asks.append("adds")
     now, runs = {r["metric"] for r in rows}, {r["cmd"] for r in rows}
     dropped = list(dict.fromkeys(r["metric"] for r in then if r["metric"] not in now and r["cmd"] not in runs))
