@@ -12,9 +12,9 @@ One change, or one goal, that spans several repos under `~/Documents`. You manag
 - List the decisions only the user can make: deletions, API shape, memory edits, whether a change is done (K3). Ask them before the work reaches each one.
 
 ## 3. One session per repo
-- Each session gets a brief with the goal, the files it owns, and what done means: the `## Test` command passes at a named commit. It cuts its own branch from the base. Never put two sessions on one repo at once.
+- Each session gets a brief with the goal, the files it owns, and what done means: its test command (AGENTS.md, F3) passes at a named commit. It cuts its own branch from the base. Never put two sessions on one repo at once.
 - Sessions run on a cheaper model than yours. The plan and the checking stay with you.
-- A session that stalls or stops short gets a follow-up, until its `## Test` command passes. Never do its work yourself; while sessions work, wait.
+- A session that stalls or stops short gets a follow-up, until its test command passes. Never do its work yourself; while sessions work, wait.
 - Sessions stage the paths they mean to commit, never `git add -A`. They commit in the repo's style, with no attribution (C1), and they never push or merge.
 - Keep `~/.fium/campaigns/<name>.json` up to date as `{"repos": {repo: [branch, ...]}}`.
 
@@ -23,7 +23,7 @@ One change, or one goal, that spans several repos under `~/Documents`. You manag
 - For a breaking change, test each caller's branch against the unmerged producer, for example by pointing the caller at the producer's worktree. Prefer expand, then contract: add the new name beside the old one, move the callers over, then remove the old one. If you skip the old name, land the producer and all its callers together.
 
 ## 5. Land
-- Run `fium status --campaign <name>`. It reruns every branch's `## Test` command at the branch tip, so you don't have to trust a session's own report.
+- Run `fium status --campaign <name>`. It reruns every branch's test command at the branch tip, so you don't have to trust a session's own report.
 - Merge only after the user says yes (push only on their word too). Run the tests on the merged base, and undo that merge if they fail.
 
 ## 6. Audit after merging

@@ -7,17 +7,17 @@ How every project here is laid out, measured and improved. Each rule has an id f
 ## Files (F)
 - **F1 ✓** Every project has `AGENTS.md` (never `AGENT.md`) with how it's built and tested, `README.md` (R), `GOALS.md` (G), `LICENSE`, sryo's by default, and a `.gitignore` that lists `.DS_Store`.
 - **F2 ✓** `CLAUDE.md` is a symlink to `AGENTS.md`.
-- **F3 ✓** AGENTS.md has a `## Test` section with the command that runs the tests.
+- **F3** AGENTS.md says how to run the tests. templates/AGENTS.md puts it under `## Test`, but any heading in any language will do; `fium status --campaign` runs the first code block under a heading that names testing.
 - **F4 ✓** A project's own checks go in `bench/checks`, one command per line; `fium check --all` fails the project when one fails.
 
 ## Goals (G)
-- **G1 ✓** GOALS.md keeps templates/GOALS.md's sections, goals in priority order.
-- **G2 ✓** Every goal has a How we know row: Goal | Metric | Where | Run. Where measures it, or "manual". Run is what `fium done` runs (K3): `` `cmd` ``, `` costly: `cmd` `` (only with `--costly`), `` live: `cmd` ``, or by hand, passing only on `fium done --by-hand` (W6). A command's last line is a run file (K1) or a number.
+- **G1** GOALS.md says what the project is for, what is never traded, its goals as a numbered list in priority order, how each is measured, and its non-goals. templates/GOALS.md suggests headings; any wording or language will do.
+- **G2 ✓** Every goal has a row in the metrics table, the first Markdown table after the numbered goals: Goal | Metric | Where | Run, headers in any language (Where or Dónde, Run, Correr or Comando are found by name, anything else by position). Where measures it, or "manual". Run is what `fium done` runs (K3): `` `cmd` ``, `` costly: `cmd` `` (only with `--costly`), `` live: `cmd` ``, or by hand (a mano), passing only on `fium done --by-hand` (W6). A command's last line is a run file (K1) or a number.
 
 ## README (R)
 A README is for someone deciding whether they want this, and then using it. It says why it's useful and how to use it, in plain words. Use rooms, avis and perch as models.
 - **R1 ✓** The opener is one or two sentences on what it lets you do and why you'd want it. Use second person, short sentences, no hype or jargon.
-- **R2 ✓** Then `## Install`, the shortest way to get it, and `## Use`, the few things a person actually types. Add `## Works with` and `## Known gaps` only when they have something to say.
+- **R2** Then the shortest way to get it and the few things a person actually types. templates/README.md calls them `## Install` and `## Use`; any heading in the README's language will do. Add works-with and known-gaps sections only when they have something to say.
 - **R3 ✓** No build steps, dev setup or internals; those belong in AGENTS.md. Describe limits by what the user sees, not by how it works inside.
 
 ## Live runs (L)

@@ -3,7 +3,7 @@ import hashlib, json, os, re, shutil, signal, statistics, subprocess, sys, tempf
 from fnmatch import fnmatch
 from pathlib import Path
 
-from check import CODE_EXT, SKIP_DIRS, git
+from check import CODE_EXT, SKIP_DIRS, columns, git, metrics_table
 from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, judge, noise_file, old_caps, parse_caps, runs_dir
 
 
@@ -11,21 +11,21 @@ def how_we_know(goals):
     # Each row's Run cell: `cmd` runs here and at the base; costly: `cmd` too, but only with --costly (an agent eval
     # spends tokens); live: `cmd` reads live state, so it runs only here. Anything else is for the user to check by
     # hand. A table without a Run column still lists its rows, so none goes missing.
-    m = re.search(r"^## How we know\n(.*?)(?=^## |\Z)", goals, re.M | re.S)
-    lines = [l for l in (m.group(1).splitlines() if m else []) if l.startswith("|")]
+    lines = metrics_table(goals)[1]
     if not lines:
         return []
     # A cell may hold a pipe written \|, as in a shell command.
     split = lambda l: [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", l.strip().strip("|"))]
-    head = [c.lower() for c in split(lines[0])]
+    where_at, run_at = columns([c.lower() for c in split(lines[0])])
+    cell = lambda cells, i: cells[i] if i is not None and len(cells) > i else ""
     rows = []
     for l in lines[2:]:
         cells = split(l)
-        run = cells[head.index("run")] if "run" in head and len(cells) > head.index("run") else ""
+        run = cell(cells, run_at)
         m = re.fullmatch(r"(?:(live|costly):\s*)?`(.+)`", run)
         rows.append({"goal": cells[0], "metric": cells[1] if len(cells) > 1 else "", "cmd": m[2] if m else None,
                      "kind": m[1] if m else None, "by_hand": run, "text": l,
-                     "where": cells[head.index("where")] if "where" in head and len(cells) > head.index("where") else ""})
+                     "where": cell(cells, where_at)})
     return rows
 
 
@@ -271,7 +271,7 @@ def done(repo, sha, branch, costly=False, print=print):
     rel = lambda name: noise.get("rel", {}).get(name, DEFAULT_REL)
     print(f"fium done: {'this tree' if dirty else 'HEAD'} against {branch} at {sha[:7]}")
     # Each row shows under its goal's name from the Goals list, so nobody has to look a number up.
-    titles = dict(re.findall(r"^(\d+)\.\s+\*\*(.+?)\.?\*\*", goals.split("## How we know")[0], re.M))
+    titles = dict(re.findall(r"^(\d+)\.\s+\*\*(.+?)\.?\*\*", metrics_table(goals)[0], re.M))
     shown = None
     # A command's metrics show under the row whose Where names them, else whose text does, else its first row.
     owner = {}

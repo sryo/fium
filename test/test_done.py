@@ -379,6 +379,16 @@ class Done(unittest.TestCase):
         self.assertIn("\nFast\n  answer time", out)
         self.assertIn("\nWorks\n  tests pass", out)
 
+    def test_goals_in_spanish_are_measured_the_same(self):
+        es = (GOALS.replace("## Goals, in priority order", "## Objetivos, en orden de prioridad").replace("1. **Fast.**", "1. **Rápido.**")
+              .replace("## How we know", "## Cómo lo sabemos").replace("| Goal | Metric | Where | Run |", "| Objetivo | Métrica | Dónde | Correr |")
+              .replace("by hand", "a mano").replace("Caps:", "Topes:"))
+        self.write(**{"GOALS.md": es}); self.git("commit", "-qam", "es")
+        out = self.done()[1]
+        self.assertIn("\nRápido\n  answer time", out)
+        self.assertIn("same  answer time: 5", out)
+        self.assertIn("a mano: nothing changed", out)
+
     def test_a_row_of_a_few_numbers_shows_them_even_when_unchanged(self):
         out = self.done()[1]
         self.assertIn("same  answer time: 5", out)

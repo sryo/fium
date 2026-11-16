@@ -27,13 +27,31 @@ def check_files(root):
     return out
 
 
-GOAL_SECTIONS = [
-    ("purpose", r"^## What .+ is for"),
-    ("never traded", r"^## .*never trad"),
-    ("goals", r"^## Goals"),
-    ("how we know", r"^## How we know"),
-    ("non-goals", r"^## Non-goals"),
-]
+# Header names fium knows for the metrics table's Where and Run columns; any other header falls back to the
+# template's positions (Goal | Metric | Where | Run).
+WHERE_COLS = {"where", "dónde", "donde"}
+RUN_COLS = {"run", "correr", "comando", "command"}
+
+
+def metrics_table(text):
+    # GOALS.md's metrics table, found by shape so its headings may be in any language: the first Markdown table after
+    # the numbered goals, with any table lines after it up to the next heading. Returns the text before it, holding the
+    # goals, and the table's lines.
+    lines = text.splitlines()
+    first = next((i for i, l in enumerate(lines) if re.match(r"\d+\. ", l)), 0)
+    start = next((i for i in range(first, len(lines)) if lines[i].startswith("|")), None)
+    if start is None:
+        return text, []
+    stop = next((i for i in range(start, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return "\n".join(lines[:start]), [l for l in lines[start:stop] if l.startswith("|")]
+
+
+def columns(head):
+    # The Where and Run columns' indexes in a header's lowercased cells, by name, else by the template's position.
+    def col(names, pos):
+        named = [i for i, c in enumerate(head) if c in names]
+        return named[0] if named else (pos if len(head) > pos and not set(head) & (WHERE_COLS | RUN_COLS) else None)
+    return col(WHERE_COLS, 2), col(RUN_COLS, 3)
 
 
 def check_goals(root):
@@ -42,28 +60,28 @@ def check_goals(root):
         return []
     text = p.read_text()
     out = []
-    missing = [n for n, rx in GOAL_SECTIONS if not re.search(rx, text, re.M | re.I)]
-    if missing:
-        out.append(finding("G1", "error", "GOALS.md", "missing sections: " + ", ".join(missing), "follow templates/GOALS.md"))
-    m = re.search(r"^## How we know\n(.*?)(?=^## |\Z)", text, re.M | re.S)
-    goals = set(re.findall(r"^(\d+)\. ", text.split("## How we know")[0], re.M))
-    if m:
-        covered = {c.split("|")[1].strip() for c in m.group(1).splitlines() if c.startswith("|")}
+    before, table = metrics_table(text)
+    goals = set(re.findall(r"^(\d+)\. ", before, re.M))
+    if table:
+        covered = {c.split("|")[1].strip() for c in table}
         for g in sorted(goals - covered):
-            out.append(finding("G2", "error", "GOALS.md", f"goal {g} has no row in How we know", "add: | {g} | metric | command or file |".replace("{g}", g)))
-        table = [r for r in m.group(1).splitlines() if r.startswith("|")]
-        head = [c.strip().lower() for c in table[0].strip().strip("|").split("|")] if table else []
-        if table and "run" not in head:
-            out.append(finding("G2", "warning", "GOALS.md", "How we know has no Run column, so fium done can't measure it",
+            out.append(finding("G2", "error", "GOALS.md", f"goal {g} has no row in the metrics table", "add: | {g} | metric | command or file |".replace("{g}", g)))
+        head = [c.strip().lower() for c in table[0].strip().strip("|").split("|")]
+        run = columns(head)[1]
+        if run is None:
+            out.append(finding("G2", "warning", "GOALS.md", "the metrics table has no Run column, so fium done can't measure it",
                                "add | Run | to each row: `the command`, live: `a command on live state`, or by hand"))
         for r in table[2:]:
             cells = [c.strip() for c in r.strip().strip("|").split("|")]
             if len(cells) < 3 or not cells[1] or not cells[2]:
                 out.append(finding("G2", "error", "GOALS.md", f"metric row without a metric or a where: {r.strip()}",
                                    "name the command or file that measures it"))
-            elif "run" in head and not (cells[head.index("run")] if len(cells) > head.index("run") else ""):
+            elif run is not None and not (cells[run] if len(cells) > run else ""):
                 out.append(finding("G2", "warning", "GOALS.md", f"row without a Run cell: {r.strip()}",
                                    "`the command`, live: `a command on live state`, or by hand"))
+    elif goals:
+        out.append(finding("G2", "error", "GOALS.md", "no metrics table after the goals",
+                           "add one: | Goal | Metric | Where | Run | (templates/GOALS.md)"))
     return out
 
 
@@ -91,9 +109,6 @@ def check_readme(root):
     if not (named_logo and not titled) and not re.match(rf"^/?{re.escape(name)}\b", opener, re.I):
         out.append(finding("R1", "warn", "README.md", "opener should start with the plain name and say what it does",
                            f"'{name} does X.' in one sentence"))
-    for sec in ("Install", "Use"):
-        if not re.search(rf"^## {sec}\b", text, re.M):
-            out.append(finding("R2", "error" if sec == "Install" else "warn", "README.md", f"no '## {sec}' section", f"add ## {sec}"))
     dev = re.findall(r"^## (Development|Contributing|Architecture|Building|Build|How it works|Internals)\b", text, re.M | re.I)
     if dev:
         out.append(finding("R3", "warn", "README.md", "sections for builders, not users: " + ", ".join(dev),
@@ -104,11 +119,9 @@ def check_readme(root):
 def check_agent_docs(root):
     out = []
     agents = root / "AGENTS.md"
-    if agents.is_file() and not re.search(r"^## Test\b", agents.read_text(), re.M):
-        out.append(finding("F3", "error", "AGENTS.md", "no '## Test' section", "add ## Test with the command that runs the tests"))
     # A project with goals tells its agents how a change is judged done, so no session falls back on an older way.
     goals = root / "GOALS.md"
-    if agents.is_file() and goals.is_file() and re.search(r"^## How we know", goals.read_text(), re.M):
+    if agents.is_file() and goals.is_file() and metrics_table(goals.read_text())[1]:
         text = agents.read_text()
         old = sorted(set(re.findall(r"fium compare[^\n]*?(--since|--price)|(--house)\b|^(Price:)", text, re.M)) - {("", "", "")})
         old = sorted({w for t in old for w in t if w})
@@ -117,7 +130,7 @@ def check_agent_docs(root):
                                "say a change is done when `fium done` says so, and drop the old way"))
         elif "fium done" not in text:
             out.append(finding("K3", "warning", "AGENTS.md", "doesn't say a change is judged with fium done",
-                               "add under ## Bench or ## Test: a change is done when `fium done` says so"))
+                               "add where it says how to test: a change is done when `fium done` says so"))
     return out
 
 
