@@ -52,6 +52,11 @@ class Done(unittest.TestCase):
     def git(self, *a):
         return subprocess.run(["git", "-C", str(self.d), *a], capture_output=True, text=True, check=True).stdout
 
+    def base(self, **files):
+        # What the user wrote on the base branch, like a Caps line: a change is held to it, not to its own (K5).
+        self.write(**files)
+        self.git("commit", "-qm", "base", "--", *files)
+
     def write(self, **files):
         for name, text in files.items():
             (self.d / name).write_text(text)
@@ -144,14 +149,17 @@ class Done(unittest.TestCase):
             ("`count=ask log*=ask+10% answer*=ask`", "print(5)", "print(120)", 3, "the user lets it pass"),
             ("`count=ask log*=free answer*=ask`", "print(5)", "print(150)", 0, "can merge"),
         ]:
-            self.write(**{"GOALS.md": GOALS.replace(caps, "Caps: " + line), "m.py": out_m, "l.py": out_l})
+            if line not in (self.d / "GOALS.md").read_text():
+                self.base(**{"GOALS.md": GOALS.replace(caps, "Caps: " + line)})
+                self.done("--start")
+            self.write(**{"m.py": out_m, "l.py": out_l})
             got, out = self.done("--costly")
             self.assertEqual(got, code, f"{line} m:{out_m} l:{out_l}\n{out}")
             self.assertIn(says, out, line)
 
     def test_old_digit_caps_still_hold_and_done_shows_them_in_words(self):
-        self.write(**{"GOALS.md": GOALS.replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `n2 log*=1 answer*=3`"),
-                      "m.py": "print(6)"})
+        self.base(**{"GOALS.md": GOALS.replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `n2 log*=1 answer*=3`")})
+        self.write(**{"m.py": "print(6)"})
         code, out = self.done()
         self.assertEqual(code, 1, "answer*=3 is still hard\n" + out)
         self.assertIn("Caps: `count=ask loc=ask log*=ask+10% answer*=hard`", out, "the line to write instead, copy-ready")
@@ -287,8 +295,8 @@ class Done(unittest.TestCase):
         self.assertIn("same  rules: 3", out, "the base came from the cache and still reads")
 
     def test_a_number_takes_its_cap_from_the_kind_its_row_names(self):
-        self.write(**{"GOALS.md": GOALS.replace("| 6 | log lines |", "| 6 | log bytes |").replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `count=ask bytes=hard`"),
-                      "l.py": "print(101)"})
+        self.base(**{"GOALS.md": GOALS.replace("| 6 | log lines |", "| 6 | log bytes |").replace("Caps: `count=ask log*=ask+10% answer*=ask`", "Caps: `count=ask bytes=hard`")})
+        self.write(**{"l.py": "print(101)"})
         code, out = self.done()
         self.assertIn("log bytes: 100 -> 101", out)
         self.assertEqual(code, 1, "bytes are hard here, counts aren't")
@@ -378,6 +386,39 @@ class Done(unittest.TestCase):
         out = self.done()[1]
         self.assertIn("\nFast\n  answer time", out)
         self.assertIn("\nWorks\n  tests pass", out)
+
+    def test_a_change_is_held_to_the_bases_caps_and_commands_not_ones_it_wrote(self):
+        self.bare("--start")
+        self.write(**{"m.py": "print(9)", "GOALS.md": GOALS.replace("answer*=ask", "answer*=free")})
+        code, out = self.done()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn("answer time: 5 -> 9", out)
+        self.assertIn("answer time got worse past its margin", out, "the base's ask still holds it")
+        self.assertIn("edits what judges it: the Caps line", out)
+        self.write(**{"m.py": "print(9)", "GOALS.md": GOALS.replace("`python3 m.py`", "`echo 5`")})
+        code, out = self.done()
+        self.assertNotEqual(code, 0, out)
+        self.assertIn("answer time runs `echo 5`, was `python3 m.py`", out)
+
+    def test_a_change_to_a_bench_file_is_the_users_to_ok(self):
+        (self.d / "bench").mkdir()
+        self.write(**{"bench/m.py": "print(5)", "GOALS.md": GOALS.replace("`python3 m.py`", "`python3 bench/m.py`")})
+        self.git("add", "."); self.git("commit", "-qm", "bench")
+        self.git("checkout", "-qb", "ch")
+        self.write(**{"bench/m.py": "print(5)  # reads less now"})
+        code, out = self.done()
+        self.assertEqual(code, 3, out)
+        self.assertIn("edits what judges it: bench/m.py", out)
+        self.write(**{"bench/m.py": "print(5)", "bench/new.py": "print(1)"})
+        self.assertNotIn("edits what judges it", self.done()[1], "a bench file the change adds judges nothing yet")
+
+    def test_a_bench_that_writes_no_number_is_unmeasured_not_a_crash(self):
+        self.write(**{"r.py": R.replace('"extra": 1', '"extra": None')})
+        code, out = self.done()
+        self.assertNotIn("Traceback", out)
+        self.assertIn("no number  extra", out)
+        self.assertIn("extra (`python3 r.py` wrote no number)", out)
+        self.assertNotEqual(code, 0)
 
     def test_goals_in_spanish_are_measured_the_same(self):
         es = (GOALS.replace("## Goals, in priority order", "## Objetivos, en orden de prioridad").replace("1. **Fast.**", "1. **Rápido.**")

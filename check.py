@@ -1,5 +1,6 @@
 """fium check: a project against the ✓ rules in RULES.md. Each finding cites a rule id."""
 import re, subprocess
+from fnmatch import fnmatch
 from pathlib import Path
 
 
@@ -138,7 +139,17 @@ def own_checks(root):
     # A project's checks fium can't know about, one shell command per line, run from its root (F4).
     p = root / "bench" / "checks"
     out = []
+    changed = None
     for cmd in [l.strip() for l in p.read_text().splitlines() if l.strip() and not l.startswith("#")] if p.is_file() else []:
+        # "when <glob> …: <command>" runs only when the change since the base branch touches a file a glob matches.
+        when = re.match(r"when\s+(.+?):\s+(.+)", cmd)
+        if when:
+            if changed is None:
+                sha = git(root, "merge-base", base_branch(root), "HEAD").stdout.strip()
+                changed = git(root, "diff", "--name-only", sha).stdout.split() + git(root, "ls-files", "--others", "--exclude-standard").stdout.split()
+            if not any(fnmatch(f, g) for f in changed for g in when[1].split()):
+                continue
+            cmd = when[2]
         r = subprocess.run(cmd, shell=True, cwd=root, capture_output=True, text=True)
         if r.returncode:
             tail = (r.stderr or r.stdout).strip().splitlines()[-1:] or [f"exit {r.returncode}"]
@@ -152,6 +163,10 @@ SKIP_DIRS = {".git", "node_modules", "test", "tests", "docs", ".build", "dist", 
 
 def git(repo, *a):
     return subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)
+
+
+def base_branch(repo, base=None):
+    return base or next((b for b in ("main", "master") if not git(repo, "rev-parse", "-q", "--verify", b).returncode), "HEAD")
 
 
 def check_tested_fixes(root, n=20):

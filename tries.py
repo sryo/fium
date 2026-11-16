@@ -6,11 +6,10 @@ from pathlib import Path
 from check import git
 from compare import change, globs, runs_dir
 import done as done_module
-from done import base_branch, done
+from done import JUDGE, base_branch, done
 
 STATUSES = ("keep", "discard", "crash", "retest", "park", "confirm", "review")
 # What judges an attempt: an attempt may add to it (a new scorer checks more) but never change it.
-JUDGE = ["bench/*", "test/*", "tests/*", "*noise.json", "*baseline.json"]
 STOP_AFTER = 5
 
 

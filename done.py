@@ -3,8 +3,8 @@ import hashlib, json, os, re, shutil, signal, statistics, subprocess, sys, tempf
 from fnmatch import fnmatch
 from pathlib import Path
 
-from check import CODE_EXT, SKIP_DIRS, columns, git, metrics_table
-from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, judge, noise_file, old_caps, parse_caps, runs_dir
+from check import CODE_EXT, SKIP_DIRS, base_branch, columns, git, metrics_table
+from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, globs, judge, noise_file, old_caps, parse_caps, runs_dir
 
 
 def how_we_know(goals):
@@ -27,6 +27,11 @@ def how_we_know(goals):
                      "kind": m[1] if m else None, "by_hand": run, "text": l,
                      "where": cell(cells, where_at)})
     return rows
+
+
+# What judges a change, unless bench/judge names it: the benches, their baselines and noise bands. A test file is the
+# change's own to write (W2), so done leaves tests out; fium try's loop holds them too.
+JUDGE = ["bench/*", "test/*", "tests/*", "*noise.json", "*baseline.json"]
 
 
 # Seconds a row's command may run before it and everything it started are stopped (fium done --timeout).
@@ -59,6 +64,11 @@ def measure(raw, name):
     if "run" in raw:
         out["metrics"], out["limits"] = dict(raw["run"].get("metrics", {})), raw["run"].get("limits", {})
         out["env"] = raw["run"].get("env")
+        # A metric with a sample that isn't a number (a bench that wrote null) measured nothing; it's named, not judged.
+        num = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
+        out["no_number"] = [n for n, m in out["metrics"].items() if not (m.get("samples") and all(map(num, m["samples"])))]
+        for n in out["no_number"]:
+            del out["metrics"][n]
     elif re.match(r"-?\d+(\.\d+)?(\s|$)", last) and not re.match(r"\d+ passed", last):
         # Its kind, for the row's cap, comes from the row's words: bytes, time, tokens, else a count.
         kind = next((k for k, w in (("bytes", r"bytes|\bKB\b|\bMB\b"), ("time", r"\bms\b|seconds|\btime\b"), ("tokens", r"tokens"))
@@ -214,10 +224,6 @@ def short(cmd):
     return cmd if len(cmd) <= 60 else cmd[:57] + "..."
 
 
-def base_branch(repo, base=None):
-    return base or next((b for b in ("main", "master") if not git(repo, "rev-parse", "-q", "--verify", b).returncode), "HEAD")
-
-
 def done_main(a):
     global TIMEOUT
     TIMEOUT = a.timeout
@@ -248,7 +254,8 @@ def done(repo, sha, branch, costly=False, print=print):
         label.setdefault(r["cmd"], r["metric"])
     # A row the change adds (neither its metric nor its command was in the base's table) has no base to fail at: what
     # it reads is new. Rewording one of the two keeps a row what it was.
-    then = how_we_know(git(repo, "show", f"{sha}:GOALS.md").stdout)
+    base_goals = git(repo, "show", f"{sha}:GOALS.md").stdout
+    then = how_we_know(base_goals)
     was, ran = {r["metric"] for r in then}, {r["cmd"] for r in then if r["cmd"]}
     old = lambda r: r["metric"] in was or r["cmd"] in ran
     fresh = {r["cmd"] for r in rows if r["cmd"]} - {r["cmd"] for r in rows if old(r)}
@@ -265,7 +272,8 @@ def done(repo, sha, branch, costly=False, print=print):
     base.update({c: {"ok": True, "s": 0, "metrics": {}, "limits": {}} for c in new_row})
     raw = {c: execute(c, repo) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
     here = {c: measure(x, label[c]) for c, x in raw.items()}
-    caps = parse_caps(goals)
+    # A change is held to the base's caps, never to ones it wrote itself (K5): a new Caps line waits on the user's word.
+    caps, wrote = (parse_caps(base_goals) if base_goals else parse_caps(goals)), parse_caps(goals)
     nf = noise_file(repo)
     noise = json.loads(Path(nf).read_text()) if nf else {}
     rel = lambda name: noise.get("rel", {}).get(name, DEFAULT_REL)
@@ -342,6 +350,10 @@ def done(repo, sha, branch, costly=False, print=print):
                 unmeasured += [f"{x['metric']} ({why})" for x in rows if x["cmd"] == c and x["kind"] != "live"]
         else:
             print(f"       `{short(c)}`: {state}, as above")
+        if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
+            for n in h.get("no_number", []):
+                print(f"     {'no number':>9}  {n}")
+                unmeasured.append(f"{n} (`{short(c)}` wrote no number)")
         mine = [n for n in {**b["metrics"], **h["metrics"]} if owner[(c, n)] == i]
         for name in mine:
             if name not in b["metrics"]:
@@ -398,6 +410,18 @@ def done(repo, sha, branch, costly=False, print=print):
         w = not old(r) and re.search(r"\b(dry|stub|fake)\b", f"{r['cmd'] or ''} {r['where']}", re.I)
         if w:
             print(f"{r['metric']}: its row says {w[1]}, so it doesn't run it the way the user does. Run the real thing, or say why it can't.")
+    # What judges a change is out of its reach: a row whose command it edited, the Caps line, or a bench file it changed
+    # (bench/judge, else bench/* and the baseline and noise files) is the user's to OK, or the change puts it back.
+    edits = [f"{r['metric']} runs `{short(r['cmd'] or r['by_hand'])}`, was `{short(c)}`" for r in rows
+             for c in [next((x["cmd"] for x in then if x["metric"] == r["metric"]), None)] if c and c != r["cmd"]]
+    if wrote != caps:
+        edits.append(f"the Caps line, held to the base's {caps_line(caps) if caps else 'none (all ask)'}")
+    judges = [g for g in globs(repo, "judge", JUDGE) if not g.startswith("test")]
+    edits += [f for st, f in (l.split("\t", 1) for l in git(repo, "diff", "--name-status", "--no-renames", sha).stdout.splitlines() if "\t" in l)
+              if st != "A" and any(fnmatch(f, g) for g in judges)]
+    if edits:
+        print(f"This change edits what judges it: {'; '.join(edits)}. The user OKs it, or put it back.")
+        asks.append("judge")
     if old_caps(goals):
         print(f"GOALS.md's Caps line uses the old digits. Write it in words: {caps_line(caps)}")
     if pending and not (blocked or hard):

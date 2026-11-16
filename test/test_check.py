@@ -226,6 +226,18 @@ Cosas.
         r = subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
 
+    def test_a_check_with_globs_runs_only_when_the_change_touches_them(self):
+        make(self.root, **{"bench/checks": "when src/*.py: sh -c 'echo transcripts lack the field >&2; exit 1'\n"})
+        g = lambda *a: subprocess.run(["git", "-C", str(self.root), *a], capture_output=True, check=True)
+        g("init", "-q", "-b", "main"); g("add", "-A"); g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "start")
+        all_ = lambda: subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
+        self.assertEqual(all_().returncode, 0, "nothing under src/ changed")
+        (self.root / "src").mkdir()
+        (self.root / "src" / "store.py").write_text("x = 1\n")
+        r = all_()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("transcripts lack the field", r.stdout)
+
     def test_every_goal_needs_a_row(self):
         make(self.root, **{"GOALS.md": GOALS.replace("1. **Fast.**", "1. **Fast.**\n2. **Small.**")})
         _, f = check(self.root)
