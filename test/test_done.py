@@ -401,8 +401,9 @@ class Done(unittest.TestCase):
         self.assertIn("answer time runs `echo 5`, was `python3 m.py`", out)
 
     def test_a_change_to_a_bench_file_is_the_users_to_ok(self):
-        (self.d / "bench").mkdir()
-        self.write(**{"bench/m.py": "print(5)", "GOALS.md": GOALS.replace("`python3 m.py`", "`python3 bench/m.py`")})
+        (self.d / "bench").mkdir(); (self.d / "fixtures").mkdir()
+        self.write(**{"bench/m.py": "print(5)", "GOALS.md": GOALS.replace("`python3 m.py`", "`python3 bench/m.py`"),
+                      "bench/judge": "fixtures/*\n", "fixtures/unsafe.txt": "gap 12cm\n"})
         self.git("add", "."); self.git("commit", "-qm", "bench")
         self.git("checkout", "-qb", "ch")
         self.write(**{"bench/m.py": "print(5)  # reads less now"})
@@ -411,6 +412,9 @@ class Done(unittest.TestCase):
         self.assertIn("edits what judges it: bench/m.py", out)
         self.write(**{"bench/m.py": "print(5)", "bench/new.py": "print(1)"})
         self.assertNotIn("edits what judges it", self.done()[1], "a bench file the change adds judges nothing yet")
+        (self.d / "bench" / "new.py").unlink()
+        self.write(**{"fixtures/unsafe.txt": "gap 9cm\n"})
+        self.assertIn("edits what judges it: fixtures/unsafe.txt", self.done()[1], "a path bench/judge names is held too")
 
     def test_a_bench_that_writes_no_number_is_unmeasured_not_a_crash(self):
         self.write(**{"r.py": R.replace('"extra": 1', '"extra": None')})

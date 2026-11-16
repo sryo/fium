@@ -416,7 +416,7 @@ def done(repo, sha, branch, costly=False, print=print):
              for c in [next((x["cmd"] for x in then if x["metric"] == r["metric"]), None)] if c and c != r["cmd"]]
     if wrote != caps:
         edits.append(f"the Caps line, held to the base's {caps_line(caps) if caps else 'none (all ask)'}")
-    judges = [g for g in globs(repo, "judge", JUDGE) if not g.startswith("test")]
+    judges = globs(repo, "judge", [g for g in JUDGE if not g.startswith("test")])
     edits += [f for st, f in (l.split("\t", 1) for l in git(repo, "diff", "--name-status", "--no-renames", sha).stdout.splitlines() if "\t" in l)
               if st != "A" and any(fnmatch(f, g) for g in judges)]
     if edits:
