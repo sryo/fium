@@ -3,30 +3,35 @@ import hashlib, json, os, re, shutil, signal, statistics, subprocess, sys, tempf
 from fnmatch import fnmatch
 from pathlib import Path
 
-from check import CODE_EXT, SKIP_DIRS, git
-from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, judge, noise_file, old_caps, parse_caps, runs_dir
+from check import CODE_EXT, SKIP_DIRS, base_branch, columns, git, metrics_table
+from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, globs, judge, noise_file, old_caps, parse_caps, runs_dir
 
 
 def how_we_know(goals):
     # Each row's Run cell: `cmd` runs here and at the base; costly: `cmd` too, but only with --costly (an agent eval
     # spends tokens); live: `cmd` reads live state, so it runs only here. Anything else is for the user to check by
     # hand. A table without a Run column still lists its rows, so none goes missing.
-    m = re.search(r"^## How we know\n(.*?)(?=^## |\Z)", goals, re.M | re.S)
-    lines = [l for l in (m.group(1).splitlines() if m else []) if l.startswith("|")]
+    lines = metrics_table(goals)[1]
     if not lines:
         return []
     # A cell may hold a pipe written \|, as in a shell command.
     split = lambda l: [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", l.strip().strip("|"))]
-    head = [c.lower() for c in split(lines[0])]
+    where_at, run_at = columns([c.lower() for c in split(lines[0])])
+    cell = lambda cells, i: cells[i] if i is not None and len(cells) > i else ""
     rows = []
     for l in lines[2:]:
         cells = split(l)
-        run = cells[head.index("run")] if "run" in head and len(cells) > head.index("run") else ""
+        run = cell(cells, run_at)
         m = re.fullmatch(r"(?:(live|costly):\s*)?`(.+)`", run)
         rows.append({"goal": cells[0], "metric": cells[1] if len(cells) > 1 else "", "cmd": m[2] if m else None,
                      "kind": m[1] if m else None, "by_hand": run, "text": l,
-                     "where": cells[head.index("where")] if "where" in head and len(cells) > head.index("where") else ""})
+                     "where": cell(cells, where_at)})
     return rows
+
+
+# What judges a change, unless bench/judge names it: the benches, their baselines and noise bands. A test file is the
+# change's own to write (W2), so done leaves tests out; fium try's loop holds them too.
+JUDGE = ["bench/*", "test/*", "tests/*", "*noise.json", "*baseline.json"]
 
 
 # Seconds a row's command may run before it and everything it started are stopped (fium done --timeout).
@@ -59,6 +64,11 @@ def measure(raw, name):
     if "run" in raw:
         out["metrics"], out["limits"] = dict(raw["run"].get("metrics", {})), raw["run"].get("limits", {})
         out["env"] = raw["run"].get("env")
+        # A metric with a sample that isn't a number (a bench that wrote null) measured nothing; it's named, not judged.
+        num = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
+        out["no_number"] = [n for n, m in out["metrics"].items() if not (m.get("samples") and all(map(num, m["samples"])))]
+        for n in out["no_number"]:
+            del out["metrics"][n]
     elif re.match(r"-?\d+(\.\d+)?(\s|$)", last) and not re.match(r"\d+ passed", last):
         # Its kind, for the row's cap, comes from the row's words: bytes, time, tokens, else a count.
         kind = next((k for k, w in (("bytes", r"bytes|\bKB\b|\bMB\b"), ("time", r"\bms\b|seconds|\btime\b"), ("tokens", r"tokens"))
@@ -180,6 +190,17 @@ def changed(repo, sha):
     return hashlib.sha256(diff.encode()).hexdigest()[:16] if diff else None
 
 
+def paths(where):
+    # The files a by-hand row covers: its Where cell's backticked paths or globs. A command (it has a space) isn't one.
+    return [w for w in re.findall(r"`([^`]+)`", where) if " " not in w]
+
+
+def touched(repo, sha, globs):
+    # Whether the change since sha, files not yet added included, touches any of globs.
+    files = git(repo, "diff", "--name-only", sha).stdout.splitlines() + git(repo, "ls-files", "--others", "--exclude-standard").stdout.splitlines()
+    return any(fnmatch(f, g) for f in files for g in globs)
+
+
 def looked(repo, sha):
     # What was looked at for each by-hand row of this change (W6), kept beside the base's cache, never in the repo (K3).
     f = runs_dir(repo) / f"done-{sha}.hand.json"
@@ -201,10 +222,6 @@ def look(repo, sha, notes):
 
 def short(cmd):
     return cmd if len(cmd) <= 60 else cmd[:57] + "..."
-
-
-def base_branch(repo, base=None):
-    return base or next((b for b in ("main", "master") if not git(repo, "rev-parse", "-q", "--verify", b).returncode), "HEAD")
 
 
 def done_main(a):
@@ -237,7 +254,8 @@ def done(repo, sha, branch, costly=False, print=print):
         label.setdefault(r["cmd"], r["metric"])
     # A row the change adds (neither its metric nor its command was in the base's table) has no base to fail at: what
     # it reads is new. Rewording one of the two keeps a row what it was.
-    then = how_we_know(git(repo, "show", f"{sha}:GOALS.md").stdout)
+    base_goals = git(repo, "show", f"{sha}:GOALS.md").stdout
+    then = how_we_know(base_goals)
     was, ran = {r["metric"] for r in then}, {r["cmd"] for r in then if r["cmd"]}
     old = lambda r: r["metric"] in was or r["cmd"] in ran
     fresh = {r["cmd"] for r in rows if r["cmd"]} - {r["cmd"] for r in rows if old(r)}
@@ -254,13 +272,14 @@ def done(repo, sha, branch, costly=False, print=print):
     base.update({c: {"ok": True, "s": 0, "metrics": {}, "limits": {}} for c in new_row})
     raw = {c: execute(c, repo) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
     here = {c: measure(x, label[c]) for c, x in raw.items()}
-    caps = parse_caps(goals)
+    # A change is held to the base's caps, never to ones it wrote itself (K5): a new Caps line waits on the user's word.
+    caps, wrote = (parse_caps(base_goals) if base_goals else parse_caps(goals)), parse_caps(goals)
     nf = noise_file(repo)
     noise = json.loads(Path(nf).read_text()) if nf else {}
     rel = lambda name: noise.get("rel", {}).get(name, DEFAULT_REL)
     print(f"fium done: {'this tree' if dirty else 'HEAD'} against {branch} at {sha[:7]}")
     # Each row shows under its goal's name from the Goals list, so nobody has to look a number up.
-    titles = dict(re.findall(r"^(\d+)\.\s+\*\*(.+?)\.?\*\*", goals.split("## How we know")[0], re.M))
+    titles = dict(re.findall(r"^(\d+)\.\s+\*\*(.+?)\.?\*\*", metrics_table(goals)[0], re.M))
     shown = None
     # A command's metrics show under the row whose Where names them, else whose text does, else its first row.
     owner = {}
@@ -281,8 +300,11 @@ def done(repo, sha, branch, costly=False, print=print):
             # A row nobody can run is satisfied only by what was looked at for this change, shown here (W6).
             s = saw.get(r["metric"])
             how = r["by_hand"] or "no Run cell"
+            covers = paths(r["where"])
             if not now_change:
                 print(f"       {how}: nothing changed since {branch}")
+            elif covers and not touched(repo, sha, covers):
+                print(f"       {how}: nothing changed in {', '.join(covers)}")
             elif s:
                 fresh_look = s["change"] == now_change
                 print(f"       {how}{'' if fresh_look else ', before the tree changed'}: " + s["saw"].replace("\n", "\n         "))
@@ -328,6 +350,10 @@ def done(repo, sha, branch, costly=False, print=print):
                 unmeasured += [f"{x['metric']} ({why})" for x in rows if x["cmd"] == c and x["kind"] != "live"]
         else:
             print(f"       `{short(c)}`: {state}, as above")
+        if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
+            for n in h.get("no_number", []):
+                print(f"     {'no number':>9}  {n}")
+                unmeasured.append(f"{n} (`{short(c)}` wrote no number)")
         mine = [n for n in {**b["metrics"], **h["metrics"]} if owner[(c, n)] == i]
         for name in mine:
             if name not in b["metrics"]:
@@ -372,8 +398,8 @@ def done(repo, sha, branch, costly=False, print=print):
     added = added_code(repo, sha) if rows else 0
     if added >= ADDS and not shown_by:
         print(f"This change adds {added} lines of code no number shows. Add a How we know row that runs it the way the user does, "
-              "from their action to what they see: each fallback, and what the screen shows after each (live: when it needs "
-              "a device or another app). Or the user says it needn't.")
+              "from their action to what they see: each fallback, and what the screen shows after each. Use the cheapest run "
+              "that gets there, headless; live: only when nothing cheaper reaches it. Or the user says it needn't.")
         asks.append("adds")
     now, runs = {r["metric"] for r in rows}, {r["cmd"] for r in rows}
     dropped = list(dict.fromkeys(r["metric"] for r in then if r["metric"] not in now and r["cmd"] not in runs))
@@ -384,6 +410,18 @@ def done(repo, sha, branch, costly=False, print=print):
         w = not old(r) and re.search(r"\b(dry|stub|fake)\b", f"{r['cmd'] or ''} {r['where']}", re.I)
         if w:
             print(f"{r['metric']}: its row says {w[1]}, so it doesn't run it the way the user does. Run the real thing, or say why it can't.")
+    # What judges a change is out of its reach: a row whose command it edited, the Caps line, or a bench file it changed
+    # (bench/judge, else bench/* and the baseline and noise files) is the user's to OK, or the change puts it back.
+    edits = [f"{r['metric']} runs `{short(r['cmd'] or r['by_hand'])}`, was `{short(c)}`" for r in rows
+             for c in [next((x["cmd"] for x in then if x["metric"] == r["metric"]), None)] if c and c != r["cmd"]]
+    if wrote != caps:
+        edits.append(f"the Caps line, held to the base's {caps_line(caps) if caps else 'none (all ask)'}")
+    judges = [g for g in globs(repo, "judge", JUDGE) if not g.startswith("test")]
+    edits += [f for st, f in (l.split("\t", 1) for l in git(repo, "diff", "--name-status", "--no-renames", sha).stdout.splitlines() if "\t" in l)
+              if st != "A" and any(fnmatch(f, g) for g in judges)]
+    if edits:
+        print(f"This change edits what judges it: {'; '.join(edits)}. The user OKs it, or put it back.")
+        asks.append("judge")
     if old_caps(goals):
         print(f"GOALS.md's Caps line uses the old digits. Write it in words: {caps_line(caps)}")
     if pending and not (blocked or hard):

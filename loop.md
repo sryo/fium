@@ -30,7 +30,7 @@ The user's yes covers every run inside that budget, so each run needn't state it
 - A near miss from the log, never an idea the log dropped for the same files without a new reason.
 
 ## 5. Stop
-- 5 attempts in a row with no keep (`fium try` says so), the budget spent, or a crash two fixes didn't cure.
+- 5 attempts in a row with no keep after the review `fium try` asks for at the first 5, the budget spent, or a crash two fixes didn't cure.
 - Never inside the loop: write lessons, change `bench/judge`, refresh a baseline, push or merge.
 
 ## 6. Report

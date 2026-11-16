@@ -12,9 +12,11 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
    - purpose
    - never traded
    - goals in priority order
-   - How we know, with a metric, where it's measured and what `fium done` runs for each goal
+   - how we know: a table with a metric, where it's measured and what `fium done` runs for each goal
    - `Caps:`, which only the user sets (K5)
    - non-goals
+
+   templates/GOALS.md suggests headings; write them in the project's language.
 
    Then the README: why you'd want it and how you use it (R).
 4. Before the first feature, set up `bench/` with a baseline in the run format (K1), so `fium done` can measure every later change.

@@ -107,16 +107,44 @@ class Check(unittest.TestCase):
         hit = [x for x in f if x["rule"] == "F1"][0]
         self.assertIn("git mv AGENT.md AGENTS.md", hit["fix"])
 
-    def test_goals_sections(self):
+    def test_docs_in_any_language_with_any_headings_pass(self):
+        goals = """# demo: objetivos
+
+## Para qué sirve demo
+Cosas.
+
+## Lo que nunca se cede
+- Nada se rompe.
+
+## Objetivos, en orden de prioridad
+1. **Rápido.**
+2. **Chico.**
+
+## Cómo lo sabemos
+| Objetivo | Métrica | Dónde | Correr |
+|---|---|---|---|
+| 1 | p50 por llamada | `bench/baseline.json` | `make bench` |
+| 2 | pantallas | a ojo | a mano |
+
+## Lo que no es
+- Todo lo demás.
+"""
+        readme = "# demo\n\ndemo hace una cosa bien.\n\n## Instalar\nx\n\n## Usar\ny\n"
+        agents = "# demo\n\n## Pruebas\n```bash\nmake test\n```\nUn cambio está listo cuando `fium done` lo dice.\n"
+        make(self.root, **{"GOALS.md": goals, "README.md": readme, "AGENTS.md": agents})
+        code, f = check(self.root)
+        self.assertEqual((code, f), (0, []), "the template's headings are suggestions, not rules")
+        for head in ("| Objetivo | Métrica | Dónde | Comando |", "| Ziel | Messgröße | Wo | Ausführen |"):
+            (self.root / "GOALS.md").write_text(goals.replace("| Objetivo | Métrica | Dónde | Correr |", head))
+            self.assertEqual(check(self.root)[1], [], head)
+        (self.root / "GOALS.md").write_text(goals.replace("| 2 | pantallas | a ojo | a mano |\n", ""))
+        self.assertTrue(any(x["rule"] == "G2" and "goal 2" in x["msg"] for x in check(self.root)[1]))
+
+    def test_goals_without_a_metrics_table(self):
         make(self.root, **{"GOALS.md": "# demo: goals\n\n## Goals\n1. x\n"})
         code, f = check(self.root)
         self.assertEqual(code, 1)
-        self.assertIn("G1", rules(f, "error"))
-
-    def test_never_traded_heading_variants(self):
-        make(self.root, **{"GOALS.md": GOALS.replace("## Never traded", "## Constraints (never traded)")})
-        _, f = check(self.root)
-        self.assertNotIn("G1", rules(f))
+        self.assertIn("G2", rules(f, "error"))
 
     def test_metric_row_needs_where(self):
         make(self.root, **{"GOALS.md": GOALS.replace("| `bench/baseline.json` |", "|  |")})
@@ -155,10 +183,9 @@ class Check(unittest.TestCase):
         (self.root / "README.md").write_text(README.replace("# demo", "# Demo"))
         self.assertNotIn("R1", rules(check(self.root)[1]), "a title in any case is just a title")
 
-    def test_readme_without_install(self):
+    def test_readme_needs_no_fixed_sections(self):
         make(self.root, **{"README.md": "# demo\n\ndemo does X.\n"})
-        _, f = check(self.root)
-        self.assertIn("R2", rules(f, "error"))
+        self.assertEqual(check(self.root), (0, []))
 
     def test_a_fix_that_touches_no_test_warns(self):
         make(self.root)
@@ -199,16 +226,22 @@ class Check(unittest.TestCase):
         r = subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout)
 
+    def test_a_check_with_globs_runs_only_when_the_change_touches_them(self):
+        make(self.root, **{"bench/checks": "when src/*.py: sh -c 'echo transcripts lack the field >&2; exit 1'\n"})
+        g = lambda *a: subprocess.run(["git", "-C", str(self.root), *a], capture_output=True, check=True)
+        g("init", "-q", "-b", "main"); g("add", "-A"); g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "start")
+        all_ = lambda: subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
+        self.assertEqual(all_().returncode, 0, "nothing under src/ changed")
+        (self.root / "src").mkdir()
+        (self.root / "src" / "store.py").write_text("x = 1\n")
+        r = all_()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("transcripts lack the field", r.stdout)
+
     def test_every_goal_needs_a_row(self):
         make(self.root, **{"GOALS.md": GOALS.replace("1. **Fast.**", "1. **Fast.**\n2. **Small.**")})
         _, f = check(self.root)
         self.assertTrue(any(x["rule"] == "G2" and "goal 2" in x["msg"] for x in f))
-
-    def test_a_missing_use_section_warns(self):
-        make(self.root, **{"README.md": README.split("## Use")[0]})
-        _, f = check(self.root)
-        self.assertIn("R2", rules(f, "warn"))
-        self.assertNotIn("R2", rules(f, "error"))
 
     def test_a_logo_block_may_open_the_readme(self):
         logo = '<p align="center">\n  <picture>\n    <source srcset="d.svg">\n    <img src="l.svg" alt="demo">\n  </picture>\n</p>\n\n'
@@ -228,11 +261,9 @@ class Check(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("R3", rules(f, "warn"))
 
-    def test_agents_md_has_a_test_section(self):
-        make(self.root, **{"AGENTS.md": "# demo\n\n## Build\nmake\n"})
-        code, f = check(self.root)
-        self.assertEqual(code, 1)
-        self.assertIn("F3", rules(f, "error"))
+    def test_agents_md_needs_no_test_heading(self):
+        make(self.root, **{"AGENTS.md": "# demo\n\n## Build\nmake\nA change is done when `fium done` says so.\n"})
+        self.assertEqual(check(self.root), (0, []))
 
     def test_new_project_passes_check(self):
         r = subprocess.run([sys.executable, str(FIUM), "new", "zebra"], capture_output=True, text=True, cwd=self.tmp.name)

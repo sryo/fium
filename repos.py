@@ -89,11 +89,11 @@ def worktrees(repo):
 
 
 def test_at(path):
-    # The first code block under AGENTS.md's ## Test (F3), run where the branch is checked out.
-    m = re.search(r"^## Test\n.*?```\w*\n(.*?)```", (Path(path) / "AGENTS.md").read_text(), re.M | re.S) \
+    # The first code block under AGENTS.md's testing heading (## Test, ## Pruebas…), run where the branch is checked out.
+    m = re.search(r"^## [^\n]*(?:test|prueba)[^\n]*\n(?:(?!^## ).)*?```\w*\n(.*?)```", (Path(path) / "AGENTS.md").read_text(), re.M | re.S | re.I) \
         if (Path(path) / "AGENTS.md").exists() else None
     if not m:
-        return {"skipped": "no ## Test command in AGENTS.md"}
+        return {"skipped": "no test command under a testing heading in AGENTS.md"}
     cmds = [l for l in m.group(1).splitlines() if l.strip() and not l.startswith("#")]
     code = 0
     for c in cmds:
