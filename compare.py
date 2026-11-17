@@ -45,6 +45,10 @@ def ratio_range(base, run, n=2000):
 def judge(name, base, run, rel, limit, abs_=0, cap=("ask", 0, 0)):
     if run is None or not run.get("samples") or not base.get("samples"):
         return {"metric": name, "verdict": "missing"}
+    # A bench that wrote null (or a string) for a sample measured nothing: named, never judged.
+    num = lambda x: isinstance(x, (int, float)) and not isinstance(x, bool)
+    if not all(map(num, base["samples"] + run["samples"])):
+        return {"metric": name, "verdict": "no number"}
     lower = base.get("dir", "lower") == "lower"
     b, r = base["samples"], run["samples"]
     mb, mr = statistics.median(b), statistics.median(r)
@@ -325,7 +329,8 @@ def compare_main(a):
         print(json.dumps(rows))
     else:
         for r in rows:
-            print(f"{r['verdict'] + ('?' if r.get('low_n') else ''):>12}  {r['metric']}: {change(r.get('base'), r.get('run'))}" + (f"  range {r['range']}" if "range" in r else ""))
+            nums = f": {change(r.get('base'), r.get('run'))}" if "base" in r or "run" in r else ""
+            print(f"{r['verdict'] + ('?' if r.get('low_n') else ''):>12}  {r['metric']}{nums}" + (f"  range {r['range']}" if "range" in r else ""))
     vs = {r["verdict"] for r in rows}
     if stale and not a.json:
         fix = ("stamp the run with \"commit\": git rev-parse HEAD and \"dirty\": whether git status --porcelain is non-empty"
@@ -335,5 +340,5 @@ def compare_main(a):
         print(f"  {stale['verdict']}: {fix}", file=sys.stderr)
     if env and env["verdict"] == "not comparable" and not a.json:
         print("  not comparable: measure the base again on the run's model", file=sys.stderr)
-    sys.exit(1 if vs & {"worse", "limit", "missing", "stale", "not comparable"} else 3 if "inconclusive" in vs else 0)
+    sys.exit(1 if vs & {"worse", "limit", "missing", "no number", "stale", "not comparable"} else 3 if "inconclusive" in vs else 0)
 
