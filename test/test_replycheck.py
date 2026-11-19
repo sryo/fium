@@ -84,6 +84,9 @@ class Landing(unittest.TestCase):
         self.assertIn("Not done: npm run e2e broke", landed_unheard(hid, lambda: {"code": 1, "said": ["Not done: npm run e2e broke."]}))
         self.assertIsNone(landed_unheard(hid, lambda: {"code": 0, "said": []}))
         self.assertIsNone(landed_unheard(hid, lambda: None))
+        said_yes = hid[:2] + [entry("user", text("yes, push it"))] + hid[2:]
+        self.assertIsNone(landed_unheard(said_yes, lambda: {"code": 3, "said": ["loc got worse past its margin."]}),
+                          "the user speaking after a hidden verdict lets it land")
 
     def test_words_inside_a_heredoc_or_quotes_are_not_commands(self):
         writes = [use("d", "python3 - <<'EOF'\nrun('fium done')\nEOF"), res("d", "OK"),

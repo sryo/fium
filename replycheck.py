@@ -62,7 +62,7 @@ def landed_unheard(lines, saved=lambda: None):
         blocks = [{"type": "text", "text": c}] if isinstance(c, str) else c if isinstance(c, list) else []
         said = " ".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text").strip()
         if m.get("role") == "user" and said and not NOT_THE_USER.match(said) and not row.get("isMeta"):
-            unheard = hit = None
+            unheard, hit, blind = None, None, False
         for b in blocks:
             if not isinstance(b, dict):
                 continue
