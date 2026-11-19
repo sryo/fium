@@ -234,12 +234,36 @@ def done_main(a):
     sha = git(repo, "merge-base", branch, "HEAD").stdout.strip()
     if a.by_hand:
         look(repo, sha, a.by_hand)
-    res = done(repo, sha, branch, a.costly)
-    if res["blocked"] or res["hard"] or res["other_model"]:
-        sys.exit(1)
-    if res["grew"] or res["pending"] or res["unmeasured"] or res["asks"] or res["unseen"]:
-        sys.exit(3)
+    said = []
+    def tee(*x, **kw):
+        said.append(" ".join(map(str, x)))
+        print(*x, **kw)
+    res = done(repo, sha, branch, a.costly, print=tee)
+    code = 1 if res["blocked"] or res["hard"] or res["other_model"] else \
+        3 if res["grew"] or res["pending"] or res["unmeasured"] or res["asks"] or res["unseen"] else 0
+    save_verdict(repo, code, [l for l in "\n".join(said).splitlines() if not l.startswith(" ")])
+    if code:
+        sys.exit(code)
     print("Nothing got worse past its cap and nothing broke: it can merge.")
+
+
+def verdict_file(repo):
+    return runs_dir(repo) / "verdicts.json"
+
+
+def save_verdict(repo, code, lines):
+    # The last verdict per checkout, kept outside the repo (K3): what a turn-end check reads when the output was filtered.
+    f = verdict_file(repo)
+    have = json.loads(f.read_text()) if f.exists() else {}
+    have[str(Path(repo).resolve())] = {"code": code, "head": git(repo, "rev-parse", "HEAD").stdout.strip(),
+                                       "at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()), "said": [l for l in lines if not l.startswith(("fium done:", "  "))][-6:]}
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps(have))
+
+
+def saved_verdict(repo):
+    f = verdict_file(repo)
+    return (json.loads(f.read_text()) if f.exists() else {}).get(str(Path(repo).resolve()))
 
 
 def done(repo, sha, branch, costly=False, print=print):

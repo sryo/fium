@@ -28,8 +28,17 @@ CORRECTION = re.compile(r"^\s*(no\b|nope|don'?t|do not|stop\b|wrong|why (did|are
 CORRECTION_ANY = re.compile(r"^\s*(no{2,}|ew+)\b|\b(ugly|not good|(is|are|looks?) (bad|wrong)|shapes are bad|not an? \w+$|"
                             r"its not an?|it'?s not an?|you should(n'?t| not) have|misread|i insist|i (don'?t|dont) like|"
                             r"i (don'?t|dont) trust|you'?re ruining|i expected)\b", re.I)
-WEIGHT = {"error": 1.0, "slow": 1 / 30, "heavy": 1 / 4000, "retry": 1.0, "correction": 5.0}
+# fium done's word that a change isn't done yet, and the calls that land one anyway.
+NOT_DONE = re.compile(r"^(Not done|Not measured yet|Couldn't measure|Not checked by hand|Dropped from How we know)|got worse past its margin|"
+                      r"no number shows|It isn't done", re.M)
+# A push, a merge of something other than the base, or gh's merge: a commit alone is how a fix gets measured again (K2).
+LANDS = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?(push|merge)\b(?!\s+(?:-\S+\s+)*(?:origin/)?(?:main|master)\b)|\bgh\s+pr\s+(merge)\b")
+# Text in the user's place that isn't the user: another session, a harness relay, a hook's feedback, the app.
+NOT_THE_USER = re.compile(r"\A\s*(<|\[Workflow harness|\[Request interrupted|Stop hook feedback|Another Claude session|Background \(from the session|"
+                          r"This session is being continued)")
+WEIGHT = {"unheeded": 5.0, "error": 1.0, "slow": 1 / 30, "heavy": 1 / 4000, "retry": 1.0, "correction": 5.0}
 TARGET = {
+    "unheeded": "a turn-end check: a reply or a landing while fium done's last verdict for the tree is not done goes back",
     "error": "error hint or helper fix: a HINTS row in every helper (or an error that names its fix), then a hint lesson",
     "slow": "helper fix (batch, background, a shorter wait) or an env note in the docs",
     "heavy": "trim the output at the helper, or point the doc at the exact section",
@@ -156,7 +165,7 @@ def transcripts(srcs, since):
 
 def mine_file(path, since):
     proj, out, tools = project(path), [], CFG.get("tools")
-    uses, last_use, chain, waiting = {}, None, None, []
+    uses, last_use, chain, waiting, unheard = {}, None, None, [], None
     sig = lambda kind, ts, sess, **kw: out.append({"kind": kind, "project": proj, "source": "transcript", "file": path,
                                                    "session": sess, "ts": ts, **kw})
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -184,6 +193,8 @@ def mine_file(path, since):
                 said = re.sub(r"\A(\s*<system-reminder>.*?</system-reminder>)+", "", text_of(content), flags=re.S).strip()
                 if said.startswith("This session is being continued from a previous conversation"):
                     continue
+                if said and not NOT_THE_USER.match(said) and not row.get("isMeta"):
+                    unheard = None
                 if since and t and t < since or not said or said.startswith("<") or row.get("isMeta"):
                     continue
                 if tools and not (last_use and re.search(tools, last_use["name"])):
@@ -211,6 +222,17 @@ def mine_file(path, since):
                     if not u or since and t and t < since:
                         continue
                     body = text_of(c.get("content"))
+                    cmd = u["input"].get("command", "") if u["name"] == "Bash" else ""
+                    if runs_done(cmd):
+                        said = [l.strip() for l in body.splitlines() if NOT_DONE.search(l)]
+                        if "it can merge" in body:
+                            unheard = None
+                        elif said:
+                            unheard = {"text": excerpt(" / ".join(said[:3])), "filtered": bool(re.search(r"\|\s*(grep|head|tail)\b", cmd)),
+                                       "call": excerpt(cmd)}
+                    if unheard and landing(cmd):
+                        sig("unheeded", ts, sess, sig=f"unheeded: {landing(cmd)} after fium done said not done", **unheard)
+                        unheard = None
                     j = json_result(body)
                     failed = bool(c.get("is_error")) or bool(FAILED.match(body)) or j.get("ok") is False
                     if failed:
@@ -234,6 +256,32 @@ def mine_file(path, since):
                                  "call": excerpt(u["flat"])} if failed else None
     flush_chain(chain, sig)
     return out
+
+
+def shell(cmd):
+    # What a command runs: heredoc bodies and quoted strings are text it writes or passes, not commands.
+    out, i = [], 0
+    while (m := re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n").search(cmd, i)):
+        end = cmd.find("\n" + m[2], m.end() - 1)
+        out.append(cmd[i:m.start()])
+        i = len(cmd) if end < 0 else end + len(m[2]) + 1
+    cmd = "".join(out) + cmd[i:]
+    return re.sub(r"'[^']*'|\"(?:\\.|[^\"\\])*\"", "''", cmd)
+
+
+def runs_done(cmd):
+    if "fium done" not in cmd:
+        return False
+    c = shell(cmd)
+    return bool(re.search(r"\bfium done\b", c)) and "--start" not in c
+
+
+def landing(cmd):
+    if not re.search(r"\b(git|gh)\b", cmd):
+        return None
+    c = shell(cmd)
+    m = LANDS.search(c[c.rfind("fium done"):] if "fium done" in c else c)
+    return m and ("gh pr merge" if m[2] else "git " + m[1])
 
 
 def flush_chain(chain, sig):

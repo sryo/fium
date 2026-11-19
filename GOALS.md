@@ -20,6 +20,7 @@ One way of doing things across every sryo project, all serving the same aim (RUL
 |---|---|---|---|
 | 1 | rules without an id (limit 0) | `bench/run.py` unnamed_rules | `bench/run.py` |
 | 2 | ✓ rules without a test (limit 0) | `bench/run.py` untested_checks | `bench/run.py` |
+| 2 | replies the turn-end hook sends back wrongly, or lets through, on sessions labelled by hand (limit 0); its time on the longest | `bench/hook.py` wrong_blocks, missed_blocks, hook_ms | `bench/hook.py` |
 | 3 | rule count | `bench/run.py` rules | `bench/run.py` |
 | 3 | repos with errors | `./fium check --all ~/Documents` | `./fium check --all ~/Documents --json \| python3 -c "import json,sys; print(sum(any(f['level'] == 'error' for f in fs) for fs in json.load(sys.stdin).values()))"` |
 | 4 | bytes an agent reads; checker LOC; check and compare time | `bench/run.py` read_bytes, loc, check_ms, compare_ms | `bench/run.py` |

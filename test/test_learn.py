@@ -123,6 +123,27 @@ class Learn(unittest.TestCase):
         self.assertEqual(corr[0]["after"], "Agent")
         self.assertEqual(corr[1]["sig"], "interrupted")
 
+    def test_mine_flags_landing_while_fium_done_says_not_done(self):
+        # The change went in while fium done's last word on it was that it isn't done: the agent ended early.
+        NOT = "worse  loc: 3971 -> 4027\nbundle_kb, loc got worse past its margin. Simplify it, or the user lets it pass."
+        self.write(os.path.join(self.tmp, "projects", "-Users-me-Documents-shop", "C1.jsonl"), [
+            use("d1", "2026-11-18T10:00:00Z", "Bash", {"command": "fium done 2>&1 | grep -E 'bundle|loc:'"}),
+            result("d1", "2026-11-18T10:01:00Z", NOT),
+            use("g1", "2026-11-18T10:02:00Z", "Bash", {"command": "git push -q"}),
+            result("g1", "2026-11-18T10:02:05Z", ""),
+            use("g2", "2026-11-18T10:03:00Z", "Bash", {"command": "git merge -q fix"}),
+            result("g2", "2026-11-18T10:03:01Z", ""),
+            use("d2", "2026-11-18T11:00:00Z", "Bash", {"command": "fium done"}),
+            result("d2", "2026-11-18T11:01:00Z", "Nothing got worse past its cap and nothing broke: it can merge."),
+            use("g3", "2026-11-18T11:02:00Z", "Bash", {"command": "git push"}),
+            result("g3", "2026-11-18T11:02:05Z", "")])
+        un = [s for s in self.mine("--since", "2026-11-01") if s["kind"] == "unheeded"]
+        self.assertEqual(len(un), 1, "one landing per not-done verdict; a push after it can merge is fine")
+        self.assertEqual(un[0]["sig"], "unheeded: git push after fium done said not done")
+        self.assertIn("got worse past its margin", un[0]["text"])
+        self.assertTrue(un[0]["filtered"], "its output went through grep, so the agent saw only part of it")
+        self.assertIn("unheeded", self.learn("digest", os.path.join(self.tmp, "signals.jsonl")))
+
     def test_mine_reads_eval_stream_json_and_kept_journals(self):
         run = os.path.join(self.tmp, "run")
         rep = [dict(r, session_id="rep-0") for r in ([

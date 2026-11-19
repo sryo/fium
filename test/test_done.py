@@ -122,6 +122,18 @@ class Done(unittest.TestCase):
         self.assertEqual(code, 3, out)
         self.assertIn("nothing recorded", out)
 
+    def test_the_verdict_is_saved_whatever_the_output_is_piped_into(self):
+        # A turn-end check reads it when the agent read only part of what fium done printed.
+        from done import saved_verdict
+        self.bare("--start")
+        self.write(**{"m.py": "print(5)  # same number"})
+        self.bare("--costly")
+        v = saved_verdict(self.d)
+        self.assertEqual(v["code"], 3)
+        self.assertTrue(any("Not checked by hand" in l for l in v["said"]), v)
+        self.bare("--costly", "--by-hand", "screens", "looked")
+        self.assertEqual(saved_verdict(self.d)["code"], 0)
+
     def test_a_branch_is_measured_against_where_it_left_main_on_every_row(self):
         self.git("checkout", "-q", "-b", "feature")
         self.write(**{"m.py": "print(7)"}); self.git("commit", "-qam", "slower")

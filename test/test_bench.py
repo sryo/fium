@@ -72,5 +72,66 @@ class Bench(unittest.TestCase):
         self.assertEqual(unnamed_rules(rules), 1)
 
 
+def entry(role, *blocks):
+    return json.dumps({"type": role, "message": {"role": role, "content": list(blocks)}})
+
+
+def said(s):
+    return entry("user", {"type": "text", "text": s})
+
+
+def bash(i, cmd, out):
+    return [entry("assistant", {"type": "tool_use", "id": i, "name": "Bash", "input": {"command": cmd}}),
+            entry("user", {"type": "tool_result", "tool_use_id": i, "content": out})]
+
+
+WORSE = "loc got worse past its margin. Simplify it, or the user lets it pass."
+
+
+class Hook(unittest.TestCase):
+    # The turn-end hook replayed on sessions whose blocks were labelled by hand: what it sent back that it shouldn't
+    # have, and what it let through that it should have sent back.
+    def session(self, t, name, lines):
+        f = Path(t, name + ".jsonl")
+        f.write_text("\n".join(lines) + "\n")
+        return str(f)
+
+    def run_hook(self, t, labels):
+        Path(t, "labels.json").write_text(json.dumps(labels))
+        out = Path(t, "run.json")
+        r = subprocess.run([sys.executable, str(ROOT / "bench" / "hook.py"), "--labels", str(Path(t, "labels.json")), str(out)],
+                           capture_output=True, text=True, cwd=ROOT)
+        return r, (json.loads(out.read_text()) if out.exists() else None)
+
+    def test_counts_wrong_and_missed_blocks_against_the_labels(self):
+        with tempfile.TemporaryDirectory() as t:
+            # Pushed after a not-done verdict, then the user spoke (line 5), then the session ended clean.
+            landed = self.session(t, "landed", [said("build it"), *bash("d", "fium done | grep loc", WORSE),
+                                                *bash("p", "git push -q", ""), said("thanks"), *bash("q", "ls", "")])
+            # The same push on the last turn: the hook runs when the session ends too (-1).
+            last = self.session(t, "last", [said("build it"), *bash("d", "fium done", WORSE), *bash("p", "git push", "")])
+            clean = self.session(t, "clean", [said("push it"), *bash("p", "git push", "")])
+            r, run = self.run_hook(t, {landed: [5], last: [-1], clean: []})
+            self.assertEqual(r.returncode, 0, r.stderr)
+            m = run["metrics"]
+            self.assertEqual((m["wrong_blocks"]["samples"], m["missed_blocks"]["samples"]), ([0], [0]))
+            self.assertEqual(run["limits"], {"wrong_blocks": 0, "missed_blocks": 0})
+            self.assertEqual(m["hook_ms"]["kind"], "time")
+            r, run = self.run_hook(t, {landed: [], last: [], clean: [1]})
+            m = run["metrics"]
+            self.assertEqual((m["wrong_blocks"]["samples"], m["missed_blocks"]["samples"]), ([2], [1]))
+            self.assertIn("last.jsonl", r.stderr, "each wrong or missed block is named")
+
+    def test_missing_labels_or_a_missing_session_fails_instead_of_counting_zero(self):
+        with tempfile.TemporaryDirectory() as t:
+            r = subprocess.run([sys.executable, str(ROOT / "bench" / "hook.py"), "--labels", str(Path(t, "none.json"))],
+                               capture_output=True, text=True, cwd=ROOT)
+            self.assertNotEqual(r.returncode, 0)
+            r, run = self.run_hook(t, {str(Path(t, "gone.jsonl")): []})
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("gone.jsonl", r.stderr)
+            self.assertIsNone(run)
+
+
 if __name__ == "__main__":
     unittest.main()
