@@ -4,7 +4,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from check import CODE_EXT, SKIP_DIRS, base_branch, columns, git, metrics_table
-from compare import DEFAULT_REL, cap_for, cap_overrides, caps_line, change, env_row, globs, judge, noise_file, old_caps, parse_caps, runs_dir
+from compare import DEFAULT_REL, NOISY, cap_for, cap_overrides, caps_line, change, env_row, globs, judge, noise_file, old_caps, parse_caps, runs_dir
 
 
 def how_we_know(goals):
@@ -44,9 +44,12 @@ def execute(cmd, cwd):
     p = subprocess.Popen(cmd, shell=True, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
     try:
         (out, err), hung = p.communicate(timeout=TIMEOUT), None
-    except subprocess.TimeoutExpired:
-        # Its own session holds whatever it started, so a server or an eval it left behind goes too.
+    except BaseException as e:
+        # Its own session holds whatever it started, so a server or an eval it left behind goes too, also when done
+        # itself is stopped (a timeout's SIGTERM, ^C).
         os.killpg(p.pid, signal.SIGKILL)
+        if not isinstance(e, subprocess.TimeoutExpired):
+            raise
         (out, err), hung = p.communicate(), TIMEOUT
     raw = {"code": 124 if hung else p.returncode, "s": round(time.monotonic() - t, 2), "out": out[-20000:], "err": err[-20000:], "timeout": hung}
     lines = out.strip().splitlines()
@@ -88,7 +91,7 @@ def measure(raw, name):
     return out
 
 
-def at_base(repo, sha, cmds, fresh=()):
+def at_base(repo, sha, cmds, fresh=(), timed=lambda c, x: False, now=None):
     # The base is measured once per commit, in a throwaway worktree beside the repo (so a test that looks for a sibling
     # checkout finds it), and kept only so the next done needn't redo it.
     cache = runs_dir(repo) / f"done-{sha}.raw.json"
@@ -96,11 +99,16 @@ def at_base(repo, sha, cmds, fresh=()):
     # A costly row runs against the live world (a browser's tabs, a model), so its base is measured now, beside the
     # current tree, never read back from an earlier run.
     # A confirmed keep's runs (fium try --confirm) are its measurement, costly ones included.
-    need = [c for c in cmds if c not in have or c in fresh and not have[c].get("confirmed")]
+    # A timing kept from an earlier run measured the machine as it was then; it's timed again, and now right after it
+    # (into now), so the load both see is the same.
+    need = [c for c in cmds if c not in have or not have[c].get("confirmed") and (c in fresh or now is not None and timed(c, have[c]))]
     if need:
-        tmp = Path(tempfile.mkdtemp(prefix=f".fium-done-{repo.name}-", dir=repo.parent))
-        wt = tmp
-        tmp.rmdir()
+        clear_left(repo)
+        # A timeout stops done or try with SIGTERM; exiting instead of dying lets it remove its copy on the way out.
+        for sig in (signal.SIGTERM, signal.SIGHUP):
+            signal.signal(sig, lambda n, _: sys.exit(128 + n))
+        wt = Path(tempfile.mkdtemp(prefix=f".fium-done-{repo.name}-{os.getpid()}-", dir=repo.parent))
+        wt.rmdir()
         git(repo, "worktree", "add", "--detach", "-q", str(wt), sha)
         try:
             for dep in ("node_modules", ".venv"):
@@ -108,13 +116,28 @@ def at_base(repo, sha, cmds, fresh=()):
                     (wt / dep).symlink_to(repo / dep)
             for c in need:
                 have[c] = execute(c, wt)
+                if now is not None and timed(c, have[c]):
+                    now[c] = execute(c, repo)
         finally:
             git(repo, "worktree", "remove", "--force", str(wt))
-            shutil.rmtree(tmp, ignore_errors=True)
+            shutil.rmtree(wt, ignore_errors=True)
         cache.parent.mkdir(parents=True, exist_ok=True)
         # A failed measurement isn't kept, so the next done tries it again.
         cache.write_text(json.dumps({c: x for c, x in have.items() if x["code"] == 0 and (c not in fresh or x.get("confirmed"))}))
     return have
+
+
+def clear_left(repo):
+    # A done killed outright (SIGKILL) leaves its copy of the base; its name holds its pid, so one still running stays.
+    prefix = str(repo.parent.resolve() / f".fium-done-{repo.name}-")
+    for wt in re.findall(r"^worktree (.+)$", git(repo, "worktree", "list", "--porcelain").stdout, re.M):
+        pid = wt[len(prefix):].split("-")[0] if wt.startswith(prefix) else ""
+        try:
+            pid.isdigit() and os.kill(int(pid), 0)
+        except ProcessLookupError:
+            git(repo, "worktree", "remove", "--force", wt)
+        except PermissionError:
+            pass
 
 
 def live_before(repo, sha):
@@ -124,7 +147,28 @@ def live_before(repo, sha):
     return f, (json.loads(f.read_text()) if f.exists() else {})
 
 
-def start(repo, sha, print=print):
+def contract_file(repo, sha):
+    # What this change set out to do, agreed when the plan was frozen (W1), kept beside the base's cache, never in the repo (K3).
+    return runs_dir(repo) / f"done-{sha}.contract.json"
+
+
+def agree(repo, sha, expect, print=print):
+    f = contract_file(repo, sha)
+    if f.exists():
+        have = json.loads(f.read_text())
+        print(f"fium done --start: this change's contract was agreed at {have['at']}: {'; '.join(i['what'] for i in have['items'])}. "
+              f"Changing it is the user's call: on their word, delete {f} and --start again")
+        return 1
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(json.dumps({"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "items": [{"what": w, "cmd": c} for w, c in expect]}))
+    save_verdict(repo, None, [], unmet=[w for w, _ in expect], base=sha)
+    print(f"fium done --start: the contract, against {sha[:7]}: {'; '.join(w for w, _ in expect)}")
+    return 0
+
+
+def start(repo, sha, expect=(), print=print):
+    if expect and agree(repo, sha, expect, print):
+        return 1
     goals = (repo / "GOALS.md").read_text() if (repo / "GOALS.md").exists() else ""
     rows = [r for r in how_we_know(goals) if r["kind"] == "live"]
     f, have = live_before(repo, sha)
@@ -230,7 +274,7 @@ def done_main(a):
     repo = Path(git(".", "rev-parse", "--show-toplevel").stdout.strip() or ".").resolve()
     branch = base_branch(repo, a.base)
     if a.start:
-        sys.exit(start(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip()))
+        sys.exit(start(repo, git(repo, "merge-base", branch, "HEAD").stdout.strip(), a.expect or ()))
     sha = git(repo, "merge-base", branch, "HEAD").stdout.strip()
     if a.by_hand:
         look(repo, sha, a.by_hand)
@@ -239,9 +283,9 @@ def done_main(a):
         said.append(" ".join(map(str, x)))
         print(*x, **kw)
     res = done(repo, sha, branch, a.costly, print=tee)
-    code = 1 if res["blocked"] or res["hard"] or res["other_model"] else \
+    code = 1 if res["blocked"] or res["hard"] or res["other_model"] or res["unmet"] else \
         3 if res["grew"] or res["pending"] or res["unmeasured"] or res["asks"] or res["unseen"] else 0
-    save_verdict(repo, code, [l for l in "\n".join(said).splitlines() if not l.startswith(" ")])
+    save_verdict(repo, code, [l for l in "\n".join(said).splitlines() if not l.startswith(" ")], unmet=res["unmet"], base=sha)
     if code:
         sys.exit(code)
     print("Nothing got worse past its cap and nothing broke: it can merge.")
@@ -251,12 +295,13 @@ def verdict_file(repo):
     return runs_dir(repo) / "verdicts.json"
 
 
-def save_verdict(repo, code, lines):
+def save_verdict(repo, code, lines, unmet=(), base=None):
     # The last verdict per checkout, kept outside the repo (K3): what a turn-end check reads when the output was filtered.
     f = verdict_file(repo)
     have = json.loads(f.read_text()) if f.exists() else {}
     have[str(Path(repo).resolve())] = {"code": code, "head": git(repo, "rev-parse", "HEAD").stdout.strip(),
-                                       "at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()), "said": [l for l in lines if not l.startswith(("fium done:", "  "))][-6:]}
+                                       "at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()), "said": [l for l in lines if not l.startswith(("fium done:", "  "))][-6:],
+                                       "unmet": list(unmet), "base": base}
     f.parent.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(have))
 
@@ -290,11 +335,13 @@ def done(repo, sha, branch, costly=False, print=print):
             r["kind"] = None
     cmds = list(dict.fromkeys(r["cmd"] for r in rows if r["cmd"] and (not r["kind"] or r["kind"] == "costly" and costly)))
     costly = {r["cmd"] for r in rows if r["kind"] == "costly"}
-    have = {**at_base(repo, sha, [c for c in cmds if c not in read and c not in fresh], costly), **read}
+    timed = lambda c, x: any(m.get("noisy", m.get("kind", "time") in NOISY) for m in measure(x, label[c])["metrics"].values())
+    now = {}
+    have = {**at_base(repo, sha, [c for c in cmds if c not in read and c not in fresh], costly, timed, now), **read}
     base = {c: measure(raw, label[c]) for c, raw in have.items() if c in cmds}
     new_row = {c for c in cmds if c in fresh and c not in base}
     base.update({c: {"ok": True, "s": 0, "metrics": {}, "limits": {}} for c in new_row})
-    raw = {c: execute(c, repo) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
+    raw = {c: now.get(c) or execute(c, repo) for c in cmds + [r["cmd"] for r in rows if r["kind"] == "live"]}
     here = {c: measure(x, label[c]) for c, x in raw.items()}
     # A change is held to the base's caps, never to ones it wrote itself (K5): a new Caps line waits on the user's word.
     caps, wrote = (parse_caps(base_goals) if base_goals else parse_caps(goals)), parse_caps(goals)
@@ -302,17 +349,26 @@ def done(repo, sha, branch, costly=False, print=print):
     noise = json.loads(Path(nf).read_text()) if nf else {}
     rel = lambda name: noise.get("rel", {}).get(name, DEFAULT_REL)
     print(f"fium done: {'this tree' if dirty else 'HEAD'} against {branch} at {sha[:7]}")
+    # The contract comes first: what the change set out to do, each result met once its command passes here.
+    items = json.loads(contract_file(repo, sha).read_text())["items"] if contract_file(repo, sha).exists() else []
+    if items:
+        print("What this change set out to do")
+    unmet = []
+    for i in items:
+        x = execute(i["cmd"], repo)
+        last = (x["out"] + x["err"]).strip().splitlines()[-1:] or [""]
+        print(f"  {'met' if not x['code'] else 'not met':>9}  {i['what']}" + (f": {last[0][:80]}" if x["code"] else ""))
+        unmet += [i["what"]] if x["code"] else []
     # Each row shows under its goal's name from the Goals list, so nobody has to look a number up.
     titles = dict(re.findall(r"^(\d+)\.\s+\*\*(.+?)\.?\*\*", metrics_table(goals)[0], re.M))
     shown = None
     # A command's metrics show under the row whose Where names them, else whose text does, else its first row.
     owner = {}
-    names = claims
     for c in cmds:
         users = [i for i, r in enumerate(rows) if r["cmd"] == c and r["kind"] != "live"]
         for name in {**base[c]["metrics"], **here[c]["metrics"]}:
-            owner[(c, name)] = ([i for i in users if names(name, rows[i]["where"])] or
-                                [i for i in users if names(name, rows[i]["text"])] or users)[0]
+            owner[(c, name)] = ([i for i in users if claims(name, rows[i]["where"])] or
+                                [i for i in users if claims(name, rows[i]["text"])] or users)[0]
     blocked, hard, grew, pending, unmeasured, other_model, failed, verdicts, news = [], [], [], [], [], [], [], {}, []
     for r in rows:
         if r["goal"] != shown:
@@ -350,31 +406,30 @@ def done(repo, sha, branch, costly=False, print=print):
             continue
         b, h = base[c], here[c]
         i = rows.index(r)
+        first = i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live")
         state = ("ok" if b["ok"] else "ok now, failed at the base") if h["ok"] else h["fails"] + ("" if b["ok"] else " (failed at the base too)")
-        if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live") and c in new_row:
+        if first and c in new_row:
             print(f"       `{short(c)}`: new row, {'ok' if h['ok'] else h['fails']}, {h['s']:g}s")
             if h["ok"] and not h["metrics"]:
                 unmeasured += [f"{x['metric']} (new row printed no number)" for x in rows if x["cmd"] == c]
-            elif not h["ok"]:
-                blocked.append(c)
-                failed.append(short(c))
-        elif i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
+        elif first:
             print(f"       `{short(c)}`: {state}, {b['s']:g}s -> {h['s']:g}s")
             env = env_row(b, h)
             if env:
                 print(f"     {env['verdict']:>9}  model: {change(env['base'], env['run'])}")
             if env and env["verdict"] == "not comparable":
                 other_model.append(short(c))
-            if b["ok"] and not h["ok"]:
-                blocked.append(c)
-                failed.append(short(c))
-            elif not b["ok"]:
+            if not b["ok"]:
                 # A command that failed at the base measured nothing to hold now against, for every row that runs it.
                 why = "fails before and after" if not h["ok"] else "failed at the base"
                 unmeasured += [f"{x['metric']} ({why})" for x in rows if x["cmd"] == c and x["kind"] != "live"]
         else:
             print(f"       `{short(c)}`: {state}, as above")
-        if i == min(j for j, x in enumerate(rows) if x["cmd"] == c and x["kind"] != "live"):
+        if first and b["ok"] and not h["ok"]:
+            # A new row's base is ok by definition, so one that fails now broke too.
+            blocked.append(c)
+            failed.append(short(c))
+        if first:
             for n in h.get("no_number", []):
                 print(f"     {'no number':>9}  {n}")
                 unmeasured.append(f"{n} (`{short(c)}` wrote no number)")
@@ -408,6 +463,8 @@ def done(repo, sha, branch, costly=False, print=print):
     # Caps (GOALS.md): a hard number that got worse isn't done until it's the same or better, or the user agrees it
     # can't get there without lowering quality; an ask one past its margin merges only if the user lets it.
     blocked, hard, grew = (list(dict.fromkeys(x)) for x in (blocked, hard, grew))
+    if unmet:
+        print(f"Not done: {', '.join(unmet)} isn't met yet. Keep going until it is, or ask the user what only they can answer.")
     if blocked:
         print(f"Not done: {', '.join(blocked)} broke or crossed a limit. Fix it.")
     if other_model:
@@ -458,5 +515,5 @@ def done(repo, sha, branch, costly=False, print=print):
         print(f"Not checked by hand: {', '.join(unseen)}. List what the old one showed and every place and size it shows, look at "
               f'each one as it is now, then say what you saw: fium done --by-hand "{unseen[0]}" "<each case and what it shows>". '
               "Or the user says it needn't.")
-    return {"unseen": unseen, "blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured, "asks": asks,
+    return {"unmet": unmet, "unseen": unseen, "blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured, "asks": asks,
             "other_model": other_model, "failed": failed, "verdicts": verdicts, "raw": {c: raw[c] for c in costly & set(cmds)}}

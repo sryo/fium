@@ -2,7 +2,7 @@
 import json, re, subprocess, sys
 from pathlib import Path
 
-from check import check, git
+from check import check, git, repos_under
 from compare import RUNS
 
 
@@ -15,7 +15,7 @@ def headings(text):
 
 
 def survey(base, min_repos=3):
-    repos = sorted(d for d in Path(base).expanduser().iterdir() if (d / ".git").exists())
+    repos = repos_under(base)
     ids = re.findall(r"^- \*\*([A-Z]\d+)", (HOME / "RULES.md").read_text(), re.M)
     # A template heading's NAME matches any project name.
     known = {f: [re.compile("^" + re.escape(h).replace("name", ".+") + "$") for h in headings((HOME / "templates" / f).read_text())]
@@ -69,10 +69,6 @@ def new(name):
     git(root, "init", "-q")
     print(f"{root}: write GOALS.md first, then the README (SKILL.md). Its Caps: line is the template's default; ask the user how firm each kind of number is (K5)")
 
-
-
-def repos_under(base):
-    return sorted({d.resolve() for d in Path(base).expanduser().iterdir() if (d / ".git").exists()})
 
 
 def worktrees(repo):

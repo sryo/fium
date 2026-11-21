@@ -140,8 +140,9 @@ def try_main(a):
     # Every worktree of a repo logs to one file, so each loop reads only the attempts made on its own branch.
     here = branch_of(repo)
     rows = [r for r in every if r.get("branch") == here]
-    if judge_changed(repo, rows):
-        sys.exit(f"This attempt changes the judge: {', '.join(judge_changed(repo, rows))}. Revert it; an attempt can't change how it's judged (bench/judge).")
+    judges = judge_changed(repo, rows)
+    if judges:
+        sys.exit(f"This attempt changes the judge: {', '.join(judges)}. Revert it; an attempt can't change how it's judged (bench/judge).")
     if a.confirm:
         return confirm(repo, rows, a)
     if a.idea and not a.record:

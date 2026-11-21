@@ -70,7 +70,7 @@ def check_goals(root):
         head = [c.strip().lower() for c in table[0].strip().strip("|").split("|")]
         run = columns(head)[1]
         if run is None:
-            out.append(finding("G2", "warning", "GOALS.md", "the metrics table has no Run column, so fium done can't measure it",
+            out.append(finding("G2", "warn", "GOALS.md", "the metrics table has no Run column, so fium done can't measure it",
                                "add | Run | to each row: `the command`, live: `a command on live state`, or by hand"))
         for r in table[2:]:
             cells = [c.strip() for c in r.strip().strip("|").split("|")]
@@ -78,7 +78,7 @@ def check_goals(root):
                 out.append(finding("G2", "error", "GOALS.md", f"metric row without a metric or a where: {r.strip()}",
                                    "name the command or file that measures it"))
             elif run is not None and not (cells[run] if len(cells) > run else ""):
-                out.append(finding("G2", "warning", "GOALS.md", f"row without a Run cell: {r.strip()}",
+                out.append(finding("G2", "warn", "GOALS.md", f"row without a Run cell: {r.strip()}",
                                    "`the command`, live: `a command on live state`, or by hand"))
     elif goals:
         out.append(finding("G2", "error", "GOALS.md", "no metrics table after the goals",
@@ -87,8 +87,7 @@ def check_goals(root):
 
 
 def repo_name(root):
-    import subprocess
-    url = subprocess.run(["git", "-C", str(root), "remote", "get-url", "origin"], capture_output=True, text=True).stdout.strip()
+    url = git(root, "remote", "get-url", "origin").stdout.strip()
     return (url.rstrip("/").split("/")[-1].removesuffix(".git") if url else root.name).lower()
 
 
@@ -124,13 +123,12 @@ def check_agent_docs(root):
     goals = root / "GOALS.md"
     if agents.is_file() and goals.is_file() and metrics_table(goals.read_text())[1]:
         text = agents.read_text()
-        old = sorted(set(re.findall(r"fium compare[^\n]*?(--since|--price)|(--house)\b|^(Price:)", text, re.M)) - {("", "", "")})
-        old = sorted({w for t in old for w in t if w})
+        old = sorted({w for t in re.findall(r"fium compare[^\n]*?(--since|--price)|(--house)\b|^(Price:)", text, re.M) for w in t if w})
         if old:
-            out.append(finding("K3", "warning", "AGENTS.md", f"judges a change the old way ({', '.join(old)})",
+            out.append(finding("K3", "warn", "AGENTS.md", f"judges a change the old way ({', '.join(old)})",
                                "say a change is done when `fium done` says so, and drop the old way"))
         elif "fium done" not in text:
-            out.append(finding("K3", "warning", "AGENTS.md", "doesn't say a change is judged with fium done",
+            out.append(finding("K3", "warn", "AGENTS.md", "doesn't say a change is judged with fium done",
                                "add where it says how to test: a change is done when `fium done` says so"))
     return out
 
@@ -159,6 +157,11 @@ def own_checks(root):
 
 CODE_EXT = {".py", ".js", ".mjs", ".cjs", ".ts", ".sh", ".swift", ".go", ".rs", ".lua", ""}
 SKIP_DIRS = {".git", "node_modules", "test", "tests", "docs", ".build", "dist", "build", "vendor"}
+
+
+def repos_under(base):
+    # A hidden folder is never one of the user's repos: it's a copy, like the base fium done checks out beside a repo.
+    return sorted({d.resolve() for d in Path(base).expanduser().iterdir() if (d / ".git").exists() and not d.name.startswith(".")})
 
 
 def git(repo, *a):

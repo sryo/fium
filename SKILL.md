@@ -1,6 +1,6 @@
 ---
 name: fium
-description: How the user wants every project built, measured and improved. Use when they want to start a new project ("I want to make something that does X"), bring an existing project in line, add benchmarks to one, write or fix a README/GOALS.md/AGENTS.md, decide whether a change is done from what it did to the project's own metrics (tokens, calls, time, bytes, LOC…), or run one goal across several repos (/fium across).
+description: How the user wants every project started, built, measured and finished. Use when they want to start a new project ("I want to make something that does X"), keep going until it's done, bring an existing project in line, add benchmarks to one, write or fix a README/GOALS.md/AGENTS.md, decide whether a change is done from what it did to the project's own metrics (tokens, calls, time, bytes, LOC…), or run one goal across several repos (/fium across).
 ---
 
 The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1, R1, K3…) in files and commits, never to the user (W4). The aim (P) is simple, natural ways of doing things that are cheap on resources and reasonably fast, and that never intrude on the user.
@@ -34,7 +34,7 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 
 ## Build a change (W)
 1. Read GOALS.md and the code it touches, then reply once with the plan and the questions (W1).
-2. On yes: `fium done --start` (the live rows' before); for a change users see, the W6 list; tests first and red, code to green; then `fium done --by-hand` (W6).
+2. On yes: `fium done --start --expect "<R>" "<its test>"` for each R (the contract, and the live rows' before); for a change users see, the W6 list; tests first and red, code to green; then `fium done --by-hand` (W6).
 3. Report each R, which paths ran for real and the numbers in the user's words (W4). Push only on the user's OK; after it, landing the change is yours (W5).
 
 ## Judge a change

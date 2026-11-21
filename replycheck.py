@@ -22,17 +22,29 @@ def found(text, ids):
     return [m.group(0) for m in re.finditer(pat, text)]
 
 
+def entry(line):
+    # A transcript line as (row, message, content blocks, their texts), or None when it isn't one.
+    try:
+        row = json.loads(line)
+        m = row.get("message") or {}
+    except (ValueError, AttributeError):
+        return None
+    c = m.get("content")
+    blocks = [{"type": "text", "text": c}] if isinstance(c, str) else c if isinstance(c, list) else []
+    return row, m, blocks, [b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text"]
+
+
+def by_user(row, m, texts):
+    # The person spoke: not a tool result, a reminder or a hook's words.
+    said = " ".join(texts).strip()
+    return bool(m.get("role") == "user" and said and not NOT_THE_USER.match(said) and not row.get("isMeta"))
+
+
 def turn_text(lines):
     # What the assistant wrote since the user last spoke; a tool result is a user entry too, but not theirs.
     out = []
-    for line in lines:
-        try:
-            m = json.loads(line).get("message") or {}
-        except (ValueError, AttributeError):
-            continue
-        c = m.get("content")
-        blocks = [{"type": "text", "text": c}] if isinstance(c, str) else c if isinstance(c, list) else []
-        texts = [b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text"]
+    for e in filter(None, map(entry, lines)):
+        _, m, _, texts = e
         if m.get("role") == "user" and texts:
             out = []
         elif m.get("role") == "assistant":
@@ -42,9 +54,9 @@ def turn_text(lines):
 
 def saved_for(cwd):
     # The verdict fium done saved for the checkout the session works in.
-    import subprocess
+    from check import git
     from done import saved_verdict
-    top = subprocess.run(["git", "-C", cwd or ".", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
+    top = git(cwd or ".", "rev-parse", "--show-toplevel").stdout.strip()
     return saved_verdict(Path(top)) if top else None
 
 
@@ -52,16 +64,8 @@ def landed_unheard(lines, saved=lambda: None):
     # fium done's not-done lines when a push or merge followed them with neither its "can merge" nor the user in between.
     # A run whose output the agent never saw (sent to a file, filtered to nothing) is read from its saved verdict.
     uses, unheard, hit, blind = {}, None, None, False
-    for line in lines:
-        try:
-            row = json.loads(line)
-            m = row.get("message") or {}
-        except (ValueError, AttributeError):
-            continue
-        c = m.get("content")
-        blocks = [{"type": "text", "text": c}] if isinstance(c, str) else c if isinstance(c, list) else []
-        said = " ".join(b.get("text", "") for b in blocks if isinstance(b, dict) and b.get("type") == "text").strip()
-        if m.get("role") == "user" and said and not NOT_THE_USER.match(said) and not row.get("isMeta"):
+    for row, m, blocks, texts in filter(None, map(entry, lines)):
+        if by_user(row, m, texts):
             unheard, hit, blind = None, None, False
         for b in blocks:
             if not isinstance(b, dict):
@@ -85,7 +89,17 @@ def landed_unheard(lines, saved=lambda: None):
     return hit
 
 
-def verdict(hook, ids):
+def open_items(cwd):
+    # The results this checkout's change agreed to reach (fium done --start --expect) and hasn't yet, while it's the same change.
+    from check import base_branch, git
+    v = saved_for(cwd)
+    if not v or not v.get("unmet"):
+        return []
+    top = git(cwd or ".", "rev-parse", "--show-toplevel").stdout.strip()
+    return v["unmet"] if git(top, "merge-base", base_branch(top), "HEAD").stdout.strip() == v.get("base") else []
+
+
+def verdict(hook, ids, left=None):
     # stop_hook_active: this turn end follows a reply the hook already sent back; once is enough.
     if hook.get("stop_hook_active"):
         return None
@@ -103,6 +117,11 @@ def verdict(hook, ids):
         if not lines:
             return None
         text = turn_text(lines)
+    # A turn ends only when the contract is met or the agent asks what only the user can answer.
+    unmet = (left or (lambda: open_items(hook.get("cwd"))))()
+    if unmet and "?" not in text.strip().split("\n\n")[-1]:
+        return {"decision": "block", "reason": "The contract for this change isn't met: %s. Keep going until fium done shows each one "
+                "met, or end on the question only the user can answer." % "; ".join(unmet)}
     hits = list(dict.fromkeys(found(text, ids)))
     if not hits:
         return None

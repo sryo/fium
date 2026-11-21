@@ -15,7 +15,7 @@ Config: <repo>/bench/learn.json. State and signals: $FIUM_HOME (~/.fium)/learn/<
   live_gate  the command check --candidate judges the run with (default: fium compare), against
   baseline   the run it is judged against (default: bench/baseline.json)
 """
-import argparse, ast, datetime, difflib, json, os, random, re, subprocess, sys
+import argparse, ast, collections, datetime, difflib, json, os, random, re, subprocess, sys
 
 FIUM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fium")
 PROJECTS = os.path.expanduser("~/.claude/projects")
@@ -87,10 +87,6 @@ def parse_ts(s):
     return t if t.tzinfo else t.replace(tzinfo=datetime.timezone.utc)
 
 
-def project(path):
-    return next((n for n in CFG["projects"] if n in path), "other")
-
-
 def text_of(content):
     if isinstance(content, str):
         return content
@@ -112,10 +108,9 @@ def json_result(body):
     if not body.lstrip().startswith("{") or len(body) > HEAVY_CHARS:
         return {}
     try:
-        j = json.loads(body)
+        return json.loads(body)
     except ValueError:
         return {}
-    return j if isinstance(j, dict) else {}
 
 
 def signature(text):
@@ -164,7 +159,7 @@ def transcripts(srcs, since):
 
 
 def mine_file(path, since):
-    proj, out, tools = project(path), [], CFG.get("tools")
+    proj, out, tools = next((n for n in CFG["projects"] if n in path), "other"), [], CFG.get("tools")
     uses, last_use, chain, waiting, unheard = {}, None, None, [], None
     sig = lambda kind, ts, sess, **kw: out.append({"kind": kind, "project": proj, "source": "transcript", "file": path,
                                                    "session": sess, "ts": ts, **kw})
@@ -191,11 +186,9 @@ def mine_file(path, since):
                     isinstance(c, dict) and c.get("type") == "tool_result" for c in content))):
                 # The app may put reminders before the person's words; a compaction summary is not a person.
                 said = re.sub(r"\A(\s*<system-reminder>.*?</system-reminder>)+", "", text_of(content), flags=re.S).strip()
-                if said.startswith("This session is being continued from a previous conversation"):
-                    continue
                 if said and not NOT_THE_USER.match(said) and not row.get("isMeta"):
                     unheard = None
-                if since and t and t < since or not said or said.startswith("<") or row.get("isMeta"):
+                if since and t and t < since or not said or row.get("isMeta") or NOT_THE_USER.match(said) and not said.startswith("[Request interrupted"):
                     continue
                 if tools and not (last_use and re.search(tools, last_use["name"])):
                     continue
@@ -330,9 +323,7 @@ def cmd_mine(a):
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w") as f:
         f.writelines(json.dumps(s, ensure_ascii=False) + "\n" for s in signals)
-    counts = {}
-    for s in signals:
-        counts[s["kind"]] = counts.get(s["kind"], 0) + 1
+    counts = collections.Counter(s["kind"] for s in signals)
     print(f"{len(signals)} signals since {since.isoformat() if since else 'the start'} → {out}: "
           + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
 
@@ -589,11 +580,9 @@ def guarded(l, tables):
     if l["kind"] == "hint":
         return [hint_for(t, l["error"]) or "" for t in tables.values()]
     body = doc_body(l)
+    # Its one caller checks the pattern matches first.
     m = re.search(l["expect"], body)
-    if not m:
-        return []
-    end = body.find("\n", m.end())
-    return [body[body.rfind("\n", 0, m.start()) + 1:end if end >= 0 else len(body)]]
+    return [body[body.rfind("\n", 0, m.start()) + 1:(body + "\n").find("\n", m.end())]]
 
 
 def cmd_replay(a):

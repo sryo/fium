@@ -1,7 +1,7 @@
 # fium: goals
 
 ## What fium is for
-One way of doing things across every sryo project, all serving the same aim (RULES.md P): natural, simple, cheap on resources, reasonably fast, never intruding on the user. Agents and the user find the same files, goals format and loop everywhere.
+Start something and finish it. Before work starts you agree what done means, as checks or numbers. An agent then keeps going until each is met, the budget runs out, or it needs an answer only you can give, never because it feels done. Every project has the same files, goals format and numbers, so any agent picks up where another stopped, shows what it did to the numbers, and turns each failure into a check that stays. All of it serves one aim (RULES.md P): natural, simple, cheap on resources, reasonably fast, never intruding on the user.
 
 ## Never traded
 - A rule never changes a project's behaviour. Migrations are file and doc moves only.
@@ -23,7 +23,7 @@ One way of doing things across every sryo project, all serving the same aim (RUL
 | 2 | replies the turn-end hook sends back wrongly, or lets through, on sessions labelled by hand (limit 0); its time on the longest | `bench/hook.py` wrong_blocks, missed_blocks, hook_ms | `bench/hook.py` |
 | 3 | rule count | `bench/run.py` rules | `bench/run.py` |
 | 3 | repos with errors | `./fium check --all ~/Documents` | `./fium check --all ~/Documents --json \| python3 -c "import json,sys; print(sum(any(f['level'] == 'error' for f in fs) for fs in json.load(sys.stdin).values()))"` |
-| 4 | bytes an agent reads; checker LOC; check and compare time | `bench/run.py` read_bytes, loc, check_ms, compare_ms | `bench/run.py` |
+| 4 | bytes an agent reads; checker LOC; check, check --all and compare time | `bench/run.py` read_bytes, loc, check_ms, check_all_ms, compare_ms | `bench/run.py` |
 
 ## Non-goals
 - Enforcing style inside code. Linters do that per language.

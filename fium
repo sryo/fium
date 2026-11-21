@@ -7,7 +7,7 @@ HOME = Path(__file__).resolve().parent
 sys.path.insert(0, str(HOME))
 from away import away_main  # noqa: E402
 from replycheck import replycheck_main  # noqa: E402
-from check import check, own_checks  # noqa: E402
+from check import check, own_checks, repos_under  # noqa: E402
 from compare import DEFAULT_REL, compare_main, noise, affects_main  # noqa: E402
 from done import done_main  # noqa: E402
 from repos import grep_main, new, status_main, survey_main  # noqa: E402
@@ -41,6 +41,9 @@ def main():
     dn.add_argument("--costly", action="store_true", help="also run the costly: rows (agent evals), at the base and here")
     dn.add_argument("--start", action="store_true", help="read the live: rows now as this change's before; run it when the plan is frozen")
     dn.add_argument("--timeout", type=int, default=3600, help="seconds a row's command may run before it is stopped (default 3600)")
+    dn.add_argument("--expect", nargs=2, action="append", metavar=("RESULT", "CMD"),
+                    help="with --start: a result this change must reach and the command that passes once it has; "
+                         "fium done holds the change until each passes")
     dn.add_argument("--by-hand", nargs=2, action="append", metavar=("ROW", "SAW"),
                     help="what you looked at for a row checked by hand: words from its metric, then each case and what it shows now")
     ns = sub.add_parser("noise", help="write noise.json for compare --noise from an A/A run, to stdout")
@@ -75,32 +78,20 @@ def main():
     gp = sub.add_parser("grep", help="search every repo under a folder at its base branch, not at a worktree's")
     gp.add_argument("pattern"); gp.add_argument("path", nargs="?", default="~/Documents")
     a = ap.parse_args()
-    if a.cmd == "away":
-        return away_main()
-    if a.cmd == "replycheck":
-        return replycheck_main()
-    if a.cmd == "status":
-        return status_main(a)
-    if a.cmd == "grep":
-        return grep_main(a)
-    if a.cmd == "new":
-        return new(a.name)
-    if a.cmd == "affects":
-        return affects_main(a)
-    if a.cmd == "done":
-        return done_main(a)
-    if a.cmd == "try":
-        return try_main(a)
-    if a.cmd == "compare":
-        return compare_main(a)
-    if a.cmd == "noise":
-        globs = [(g, float(v)) for g, _, v in (x.rpartition("=") for x in a.abs)]
-        return print(json.dumps(noise(a.base, a.run, a.min, globs), indent=2, ensure_ascii=False))
-    if a.cmd == "survey":
-        return survey_main(a)
+    noise_main = lambda a: print(json.dumps(noise(a.base, a.run, a.min, [(g, float(v)) for g, _, v in (x.rpartition("=") for x in a.abs)]),
+                                            indent=2, ensure_ascii=False))
+    run = {"away": lambda a: away_main(), "replycheck": lambda a: replycheck_main(), "new": lambda a: new(a.name), "noise": noise_main,
+           "status": status_main, "grep": grep_main, "affects": affects_main, "done": done_main, "try": try_main,
+           "compare": compare_main, "survey": survey_main}
+    if a.cmd in run:
+        return run[a.cmd](a)
     base = Path(a.path).expanduser()
     if a.all:
-        res = {d.name: check(d) + own_checks(d.resolve()) for d in sorted(base.iterdir()) if (d / ".git").exists()}
+        # Each repo's checks run beside the others', so the slowest repo sets the time, not their sum.
+        from concurrent.futures import ThreadPoolExecutor
+        repos = repos_under(base)
+        with ThreadPoolExecutor() as pool:
+            res = dict(zip((d.name for d in repos), pool.map(lambda d: check(d) + own_checks(d), repos)))
     else:
         res = check(base)
     if a.json:

@@ -18,7 +18,7 @@ class Bench(unittest.TestCase):
         self.assertEqual(run["commit"], head)
         self.assertIsInstance(run["dirty"], bool)
         m = run["metrics"]
-        self.assertEqual(set(m), {"rules", "untested_checks", "unnamed_rules", "read_bytes", "loc", "check_ms", "compare_ms"})
+        self.assertEqual(set(m), {"rules", "untested_checks", "unnamed_rules", "read_bytes", "loc", "check_ms", "compare_ms", "check_all_ms"})
         for name, v in m.items():
             self.assertIn(v["dir"], ("lower", "higher"), name)
             self.assertTrue(v["samples"], name)
@@ -39,7 +39,7 @@ class Bench(unittest.TestCase):
             base_path, run_path = r.stdout.split()
             base, run = json.loads(Path(base_path).read_text()), json.loads(Path(run_path).read_text())
         self.assertEqual((base["commit"], base["dirty"]), (head, False))
-        for name in ("check_ms", "compare_ms"):
+        for name in ("check_ms", "compare_ms", "check_all_ms"):
             self.assertEqual(len(base["metrics"][name]["samples"]), 3)
             self.assertEqual(len(run["metrics"][name]["samples"]), 3)
         sys.path.insert(0, str(ROOT / "bench"))

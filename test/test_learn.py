@@ -230,6 +230,9 @@ class Learn(unittest.TestCase):
             # the app puts a reminder before the person's words; a compaction summary is not a person
             human("2026-11-07T19:10:00Z", [{"type": "text", "text": "<system-reminder>\nLinked sessions now\n</system-reminder>"},
                                            {"type": "text", "text": "nooo, the stacked squares are wrong"}]),
+            # a hook's or another session's words are not the person correcting
+            human("2026-11-07T19:10:30Z", "Stop hook feedback: stop, the reply names a rule id"),
+            human("2026-11-07T19:10:40Z", "Another Claude session sent a message: no, that's wrong"),
             human("2026-11-07T19:11:00Z", "This session is being continued from a previous conversation that ran out of context. "
                                           "The user said it is not good"),
         ])

@@ -7,9 +7,9 @@ Reply once (W1) with:
 - the project and the files the loop may edit
 - the number an addition must make better (`--target`)
 - what it tries first
-- the budget in tokens, wall time and attempts. The default is 3M tokens and 2 hours of live runs per project; free rows are unlimited.
+- a budget in tokens, wall time or attempts only if the user wants one; by default the loop runs until a stop below.
 
-The user's yes covers every run inside that budget, so each run needn't state its cost again (L1).
+The user's yes covers every run in the loop, so each run needn't state its cost again (L1).
 
 ## 2. Set up
 - Work in a worktree beside the repo, on its own branch from the base: `git worktree add ../<repo>-loop-<date> -b loop/<date>`. Never loop in the user's checkout, tabs or foreground. A live eval that drives a browser runs in a perch room, one loop per eval file.
@@ -30,7 +30,7 @@ The user's yes covers every run inside that budget, so each run needn't state it
 - A near miss from the log, never an idea the log dropped for the same files without a new reason.
 
 ## 5. Stop
-- 5 attempts in a row with no keep after the review `fium try` asks for at the first 5, the budget spent, or a crash two fixes didn't cure.
+- 5 attempts in a row with no keep after the review `fium try` asks for at the first 5, the user's budget spent, if they set one, or a crash two fixes didn't cure.
 - Never inside the loop: write lessons, change `bench/judge`, refresh a baseline, push or merge.
 
 ## 6. Report

@@ -157,7 +157,7 @@ Cosas.
                            (GOALS.replace("`make bench`", ""), "an empty Run cell")):
             (self.root / "GOALS.md").write_text(goals)
             _, f = check(self.root)
-            self.assertTrue(any(x["rule"] == "G2" and x["level"] == "warning" and "Run" in x["msg"] for x in f),
+            self.assertTrue(any(x["rule"] == "G2" and x["level"] == "warn" and "Run" in x["msg"] for x in f),
                             f"fium done can't measure a row with {why}")
         for run in ("live: `du -sk data`", "by hand"):
             (self.root / "GOALS.md").write_text(GOALS.replace("`make bench`", run))
@@ -214,6 +214,31 @@ Cosas.
         out = json.loads(r.stdout)
         self.assertEqual(list(out), ["demo"])
 
+    def test_all_skips_hidden_folders_like_a_copy_fium_done_left(self):
+        make(self.root)
+        subprocess.run(["git", "init", "-q", str(self.root)])
+        left = Path(self.tmp.name) / ".fium-done-demo-1-x"
+        left.mkdir()
+        make(left)
+        subprocess.run(["git", "init", "-q", str(left)])
+        run = lambda *cmd: json.loads(subprocess.run([sys.executable, str(FIUM), *cmd, "--json", self.tmp.name], capture_output=True, text=True).stdout)
+        self.assertEqual(list(run("check", "--all")), ["demo"])
+        self.assertEqual(run("survey")["repos"], 1)
+        self.assertEqual(list(run("status")), ["demo"])
+
+    def test_all_runs_the_repos_checks_at_once(self):
+        # Each repo's check waits for the other's flag: one at a time, the first gives up; at once, both pass.
+        wait = "sh -c 'touch ../{me}.flag; for i in $(seq 100); do [ -f ../{other}.flag ] && exit 0; sleep 0.1; done; exit 1'\n"
+        for me, other in (("demo", "second"), ("second", "demo")):
+            root = Path(self.tmp.name) / me
+            root.mkdir(exist_ok=True)
+            make(root, **{"bench/checks": wait.format(me=me, other=other)})
+            subprocess.run(["git", "init", "-q", str(root)])
+        r = subprocess.run([sys.executable, str(FIUM), "check", "--json", "--all", self.tmp.name], capture_output=True, text=True)
+        out = json.loads(r.stdout)
+        self.assertEqual(list(out), ["demo", "second"], "in name order, whichever finishes first")
+        self.assertFalse([x for fs in out.values() for x in fs if x["rule"] == "F4"], out)
+
     def test_all_runs_each_projects_own_checks(self):
         make(self.root, **{"bench/checks": "# doc budgets\ntrue\nsh -c 'echo over budget >&2; exit 1'\n"})
         subprocess.run(["git", "init", "-q", str(self.root)])
@@ -260,6 +285,18 @@ Cosas.
         code, f = check(self.root)
         self.assertEqual(code, 0)
         self.assertIn("R3", rules(f, "warn"))
+
+    def test_findings_are_an_error_or_a_warn(self):
+        levels = set(re.findall(r'finding\("[A-Z]\d+", "(\w+)"', (FIUM.parent / "check.py").read_text()))
+        self.assertEqual(levels, {"error", "warn"})
+
+    def test_check_all_leaves_the_repo_as_it_was(self):
+        make(self.root, **{"bench/checks": "true\n"})
+        g = lambda *a: subprocess.run(["git", "-C", str(self.root), *a], capture_output=True, text=True, check=True).stdout
+        g("init", "-q", "-b", "main"); g("add", "-A"); g("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "start")
+        before = g("rev-parse", "HEAD"), g("status", "--porcelain", "--ignored")
+        subprocess.run([sys.executable, str(FIUM), "check", "--all", self.tmp.name], capture_output=True)
+        self.assertEqual((g("rev-parse", "HEAD"), g("status", "--porcelain", "--ignored")), before)
 
     def test_agents_md_needs_no_test_heading(self):
         make(self.root, **{"AGENTS.md": "# demo\n\n## Build\nmake\nA change is done when `fium done` says so.\n"})
@@ -355,6 +392,21 @@ class Docs(unittest.TestCase):
         cmds = re.search(r"\{(.+?)\}", out).group(1).split(",")
         for c in cmds:
             self.assertRegex(out, rf"(?m)^\s+{c}\s+\S", c)
+
+    def test_fiums_readme_says_why_before_how_and_its_steps_go_around_a_loop(self):
+        readme, goals = (ROOT / "README.md").read_text(), (ROOT / "GOALS.md").read_text()
+        self.assertLess(readme.index("| Without fium | With fium |"), readme.index("## Install"))
+        use = readme[readme.index("## Use"):]
+        self.assertEqual(re.findall(r"^- \*\*(\w+)\.\*\*", use, re.M), ["Start", "Finish", "Learn", "Improve"])
+        self.assertIn("Start something and finish it", goals)
+        self.assertIn("never because it feels done", goals)
+        self.assertNotIn("sryo project", goals, "fium is for your projects, as the README says")
+
+    def test_the_loop_runs_until_a_stop_with_no_budget_unless_the_user_sets_one(self):
+        loop = (ROOT / "loop.md").read_text()
+        self.assertNotIn("3M tokens", loop)
+        self.assertNotIn("2 hours", loop)
+        self.assertIn("only if the user wants one", loop)
 
     def test_skill_docs_call_fium_the_way_install_puts_it(self):
         install = re.search(r"^## Install\n(.*?)(?=^## )", (ROOT / "README.md").read_text(), re.M | re.S).group(1)

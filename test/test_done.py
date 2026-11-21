@@ -374,6 +374,76 @@ class Done(unittest.TestCase):
         finally:
             (self.d.parent / (self.d.name + "-sib")).rmdir()
 
+    def test_a_timed_base_is_measured_again_beside_now_not_read_from_an_earlier_run(self):
+        # Each run of tm.py reads 10 ms slower than the last, as a machine's load drifts over a day.
+        n = self.d.parent / (self.d.name + ".n")
+        tm = (f"import json, pathlib\np = pathlib.Path({str(n)!r})\nk = int(p.read_text()) + 1 if p.exists() else 1\np.write_text(str(k))\n"
+              'json.dump({"metrics": {"t": {"dir": "lower", "kind": "time", "samples": [100 + 10 * k]}}}, open("tm.json", "w"))\nprint("tm.json")\n')
+        try:
+            self.write(**{"tm.py": tm, "GOALS.md": GOALS + "| 8 | t | `tm.py` | `python3 tm.py` |\n", ".gitignore": "d.txt\n*.json\n"})
+            self.git("add", "."); self.git("commit", "-qm", "timed row")
+            self.write(**{"m.py": "print(4)"})
+            self.done()
+            out = self.done()[1]
+            self.assertIn("t: 130 -> 140", out, "the base is timed again, right before now, not read back as 110")
+        finally:
+            n.unlink(missing_ok=True)
+
+    def test_the_contract_agreed_at_start_holds_the_change_until_each_result_is_met(self):
+        code, out = self.bare("--start", "--expect", "empty input parses", "test -f ok.txt")
+        self.assertIn("empty input parses", out)
+        self.write(**{"m.py": "print(4)"})
+        code, out = self.done()
+        self.assertEqual(code, 1)
+        self.assertIn("not met  empty input parses", out)
+        self.assertIn("Not done: empty input parses isn't met yet.", out)
+        self.write(**{"ok.txt": "x"})
+        code, out = self.done()
+        self.assertIn("met  empty input parses", out)
+        self.assertNotIn("not met", out)
+        self.assertNotIn("isn't met", out)
+
+    def test_a_contract_is_set_once_and_changing_it_is_the_users_call(self):
+        self.bare("--start", "--expect", "a", "true")
+        code, out = self.bare("--start", "--expect", "b", "true")
+        self.assertEqual(code, 1)
+        self.assertIn("contract", out)
+        self.assertIn("a", out)
+
+    def copies(self):
+        return [p for p in self.d.parent.iterdir() if p.name.startswith(f".fium-done-{self.d.name}-")]
+
+    def test_a_done_stopped_by_a_timeout_removes_its_copy_of_the_base(self):
+        flag = self.d.parent / (self.d.name + ".started")
+        self.base(**{"m.py": f"import pathlib, time\npathlib.Path({str(flag)!r}).touch()\ntime.sleep(60)\nprint(5)"})
+        self.write(**{"m.py": "print(5)"})
+        p = subprocess.Popen([sys.executable, str(FIUM), "done"], cwd=self.d, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(200):
+                if flag.exists():
+                    break
+                p.poll() is None and __import__("time").sleep(0.1)
+            self.assertTrue(flag.exists(), "the base's row started")
+            p.terminate()
+            p.wait(timeout=20)
+        finally:
+            p.kill()
+            flag.unlink(missing_ok=True)
+        self.assertEqual(self.copies(), [])
+        self.assertEqual(self.git("worktree", "list").count("\n"), 1)
+
+    def test_a_copy_a_killed_done_left_goes_next_time_and_a_running_ones_stays(self):
+        dead, alive = (self.d.parent / f".fium-done-{self.d.name}-{pid}-x" for pid in (4194304, os.getpid()))
+        for wt in (dead, alive):
+            self.git("worktree", "add", "--detach", "-q", str(wt), "HEAD")
+        try:
+            self.write(**{"m.py": "print(4)"})
+            self.done()
+            self.assertEqual(self.copies(), [alive])
+        finally:
+            for wt in (dead, alive):
+                wt.exists() and self.git("worktree", "remove", "--force", str(wt))
+
     def test_an_unchanged_number_a_row_or_a_cap_names_still_shows_among_many(self):
         many = '{**{f"op{i}": 1 for i in range(9)}, "beacon bytes": 50, "rules": 3}'
         self.write(**{"r.py": R.replace('{"rules": 3, "size": 9, "extra": 1}', many),

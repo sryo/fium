@@ -104,6 +104,17 @@ class Landing(unittest.TestCase):
         for cmd in ("git merge -q feature", "gh pr merge 12 --squash", "git -C ~/x push"):
             self.assertIsNotNone(landed_unheard([use("d", "fium done"), res("d", NOT_DONE), use("c", cmd), res("c", "")]), cmd)
 
+    def test_a_turn_that_stops_with_the_contract_unmet_is_sent_back_unless_it_asks(self):
+        left = lambda: ["empty input parses"]
+        v = verdict({"last_assistant_message": "All set."}, IDS, left)
+        self.assertEqual(v["decision"], "block")
+        self.assertIn("empty input parses", v["reason"])
+        self.assertIn("Keep going", v["reason"])
+        self.assertIsNone(verdict({"last_assistant_message": "Which parser should handle it?"}, IDS, left),
+                          "a question only the user can answer is a stop the contract allows")
+        self.assertIsNone(verdict({"last_assistant_message": "All set.", "stop_hook_active": True}, IDS, left))
+        self.assertIsNone(verdict({"last_assistant_message": "All set."}, IDS, lambda: []))
+
     def test_the_hook_blocks_once_with_what_fium_done_said(self):
         f = tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False)
         f.write("\n".join([entry("user", text("go")), use("d", "fium done"), res("d", NOT_DONE), use("c", "git push"),

@@ -1,5 +1,5 @@
 """fium compare, noise and affects: what a change costs against a baseline, and which bench tasks it can move."""
-import json, math, os, random, re, statistics, subprocess, sys
+import json, math, os, random, re, statistics, sys
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -56,20 +56,16 @@ def judge(name, base, run, rel, limit, abs_=0, cap=("ask", 0, 0)):
     if limit is not None and ((mr > limit) if lower else (mr < limit)):
         return {**row, "verdict": "limit", "limit": limit}
     noisy = base.get("noisy", base.get("kind", "time") in NOISY)
-    if base.get("kind") == "limit":
+    if base.get("kind") == "limit" or abs(mr - mb) <= abs_:
         v = "same"
-    elif abs(mr - mb) <= abs_:
-        v = "same"
-    elif noisy and min(len(b), len(r)) < MIN_N:
-        # Too few reps for a range (agent evals): judge the median against the band, and say so.
-        point = mr / mb if mb else float("inf")
-        if not lower:
-            point = 1 / point if point else float("inf")
-        v = "worse" if point > 1 + rel else "better" if point < 1 - rel else "same"
-        row["low_n"] = True
     elif noisy:
-        lo, hi = ratio_range(b, r)
-        row["range"] = [round(lo, 4), round(hi, 4)]
+        if min(len(b), len(r)) < MIN_N:
+            # Too few reps for a range (agent evals): judge the median against the band, and say so.
+            lo = hi = mr / mb if mb else float("inf")
+            row["low_n"] = True
+        else:
+            lo, hi = ratio_range(b, r)
+            row["range"] = [round(lo, 4), round(hi, 4)]
         if not lower:
             lo, hi = 1 / hi if hi else float("inf"), 1 / lo if lo else float("inf")
         if lo > 1 + rel:
@@ -210,25 +206,20 @@ def globs(repo, name, defaults):
     return [f"bench/{name}"] + [l for l in lines if l != "!defaults"] + ([] if "!defaults" in lines else defaults)
 
 
-def inert_globs(repo):
-    # Agent-facing docs (SKILL.md, references/) change what a run measures, so they are never inert by default.
-    return globs(repo, "inert", INERT)
-
-
 def stale_row(run_path, repo):
     # A run says which commit it measured, so an old or dirty run can't pass for this change (K1, K2).
     run = json.load(open(run_path))
     sha = run.get("commit")
     if not sha:
         return {"metric": "(commit)", "verdict": "unstamped"}
-    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    head = git(repo, "rev-parse", "HEAD").stdout.strip()
     row = {"metric": "(commit)", "base": head[:12] or None, "run": sha[:12] + ("+dirty" if run.get("dirty") else "")}
     if len(sha) < 7 or run.get("dirty"):
         return {**row, "verdict": "stale"}
     if head.startswith(sha):
         return None
-    files, globs = changed_since(repo, sha), inert_globs(repo)
-    if files is not None and all(any(fnmatch(f, g) for g in globs) for f in files):
+    files, inert = changed_since(repo, sha), globs(repo, "inert", INERT)
+    if files is not None and all(any(fnmatch(f, g) for g in inert) for f in files):
         return {**row, "verdict": "carried"}
     return {**row, "verdict": "stale"}
 
@@ -286,17 +277,12 @@ def affects(repo, revs, rules_file):
     files = changed_since(repo, base)
     if files is None:
         return {"tasks": "*", "why": {base: "not an ancestor of HEAD"}}
-    tasks, why = set(), {}
+    why, inert = {}, globs(repo, "inert", INERT)
     for f in files:
         hit = next((r["tasks"] for r in rules if any(fnmatch(f, g) for g in r["files"])), None)
-        if hit is None and any(fnmatch(f, g) for g in inert_globs(repo)):
-            hit = "none"
-        why[f] = hit if hit is not None else "*"
-        if why[f] == "*":
-            tasks = "*"
-        elif why[f] != "none" and tasks != "*":
-            tasks |= set(why[f])
-    return {"tasks": tasks if tasks == "*" else sorted(tasks), "why": why}
+        why[f] = hit if hit is not None else "none" if any(fnmatch(f, g) for g in inert) else "*"
+    tasks = "*" if "*" in why.values() else sorted({t for v in why.values() if v != "none" for t in v})
+    return {"tasks": tasks, "why": why}
 
 
 def affects_main(a):

@@ -63,17 +63,24 @@ def wall_ms(cmd, cwd):
 
 def timings(fiums, reps):
     # Rep i runs every checker once, in an order that rotates each rep, so drift and order hit them all alike.
-    out = [{"check_ms": [], "compare_ms": []} for _ in fiums]
+    out = [{"check_ms": [], "compare_ms": [], "check_all_ms": []} for _ in fiums]
     # A baseline from before compare left `price` still spells it `price compare`.
     compare = [["price", "compare"] if 'add_parser("price"' in Path(f).read_text() else ["compare"] for f in fiums]
     with tempfile.TemporaryDirectory() as t:
         noisy = lambda xs: {"metrics": {"t": {"dir": "lower", "kind": "time", "samples": xs}}}
         Path(t, "b.json").write_text(json.dumps(noisy([100, 101, 99, 100, 102, 98, 100, 101])))
         Path(t, "r.json").write_text(json.dumps(noisy([104, 99, 103, 101, 100, 105, 102, 98])))
+        # Repos whose own checks each take a moment, as most real ones do: check --all's time is how it schedules them.
+        repos = Path(t, "repos")
+        repos.mkdir()
+        for name in "abcd":
+            subprocess.run([sys.executable, str(ROOT / "fium"), "new", name], cwd=repos, capture_output=True, check=True)
+            (repos / name / "bench" / "checks").write_text("sleep 0.2\n")
         for i in range(reps):
             for j in sorted(range(len(fiums)), key=lambda j: (j + i) % len(fiums)):
                 out[j]["check_ms"].append(wall_ms([sys.executable, fiums[j], "check", "."], ROOT))
                 out[j]["compare_ms"].append(wall_ms([sys.executable, fiums[j], *compare[j], "--json", "b.json", "r.json"], t))
+                out[j]["check_all_ms"].append(wall_ms([sys.executable, fiums[j], "check", "--all", str(repos)], t))
     return [{k: {"dir": "lower", "kind": "time", "samples": v} for k, v in o.items()} for o in out]
 
 
