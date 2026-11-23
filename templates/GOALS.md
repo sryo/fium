@@ -1,7 +1,8 @@
 # NAME: goals
 
 ## What NAME is for
-Who uses it, for what, and what it has to beat.
+What it lets them do, and what it has to beat. Then its 2 or 3 users, one line each:
+- Who comes from what they use today; job: one goal in their words; starts with what they'd have in hand; gives up when … (guessed)
 
 ## Never traded
 - A constraint no goal may break.

@@ -25,6 +25,7 @@ Ask your agent in plain words, and the fium skill picks the step. The steps go a
 - **Finish.** "Is this done?": `fium done` measures every number in the project's goals where the change started and now, and asks you only when a number grows more than you allow.
 - **Learn.** "Learn from this week's sessions": `fium learn` finds where agents failed, retried or were corrected, ranks it, and keeps each fix as a check.
 - **Improve.** "Improve perch overnight": it tries one idea at a time in a worktree, keeps what makes the numbers better, reverts the rest, and logs why. You merge the keeps.
+- **Discover.** "Can a newcomer use perch?": each kind of user tries their job with only what they'd have, and what stops them is kept and checked again next time.
 
 The smallest way to try it: "Bring perch in line". The agent fixes what the checker finds, one rule at a time. For one goal across several repos, use `/fium across <goal>`. It researches, plans, runs one session per repo, and merges after your yes.
 

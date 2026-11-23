@@ -46,6 +46,9 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 ## Loop
 To improve a project's numbers unattended (try, measure, keep or revert, repeat), read `loop.md` beside this file and follow it.
 
+## Discover
+To find out whether a project's users can do what its goals promise (each kind of user tries their job; what stops them is kept), read `discover.md` beside this file and follow it.
+
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. `fium learn mine`, then `digest`, reads the project's transcripts, plus what `learn.json` adds (`fium learn --help`). `keep` keeps each fix as a lesson `replay` checks; `check` gates a fix. Fix the top clusters test-first, so each fix lands as a check (W2), placed where the failure happens (S1).
 

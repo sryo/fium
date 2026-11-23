@@ -337,7 +337,7 @@ ROOT = FIUM.parent
 class Docs(unittest.TestCase):
     def test_every_cited_rule_id_exists(self):
         ids = set(re.findall(r"\*\*([A-Z]\d+)\b", (ROOT / "RULES.md").read_text()))
-        for doc in ("SKILL.md", "across.md", "loop.md", "AGENTS.md", "README.md", "templates/GOALS.md", "templates/AGENTS.md"):
+        for doc in ("SKILL.md", "across.md", "loop.md", "discover.md", "AGENTS.md", "README.md", "templates/GOALS.md", "templates/AGENTS.md"):
             cited = set(re.findall(r"\b([A-Z]\d+)\b", (ROOT / doc).read_text()))
             self.assertEqual(cited - ids, set(), doc)
 
@@ -397,7 +397,7 @@ class Docs(unittest.TestCase):
         readme, goals = (ROOT / "README.md").read_text(), (ROOT / "GOALS.md").read_text()
         self.assertLess(readme.index("| Without fium | With fium |"), readme.index("## Install"))
         use = readme[readme.index("## Use"):]
-        self.assertEqual(re.findall(r"^- \*\*(\w+)\.\*\*", use, re.M), ["Start", "Finish", "Learn", "Improve"])
+        self.assertEqual(re.findall(r"^- \*\*(\w+)\.\*\*", use, re.M), ["Start", "Finish", "Learn", "Improve", "Discover"])
         self.assertIn("Start something and finish it", goals)
         self.assertIn("never because it feels done", goals)
         self.assertNotIn("sryo project", goals, "fium is for your projects, as the README says")
@@ -413,7 +413,7 @@ class Docs(unittest.TestCase):
         self.assertIn("https://raw.githubusercontent.com/sryo/fium/main/install.sh | bash", install, "Install is install.sh's one-liner")
         self.assertIn('link "$FIUM_DIR/fium" "$bin_dir/fium"', (ROOT / "install.sh").read_text(),
                       "install.sh puts fium on PATH, so bare `fium` runs anywhere")
-        for doc in ("README.md", "SKILL.md", "loop.md", "across.md"):
+        for doc in ("README.md", "SKILL.md", "loop.md", "across.md", "discover.md"):
             calls = re.sub(r"(?m)^ln -sfn .*\n", "", (ROOT / doc).read_text())
             self.assertNotIn("fium/fium", calls, f"{doc} calls fium by path; one spelling, the one Install sets up")
 
@@ -431,6 +431,32 @@ class Docs(unittest.TestCase):
         subs = next(x for x in learn.parser()._actions if x.choices).choices
         for s in subs:
             self.assertRegex(skill, rf"`[^`]*\b{s}`", f"fium learn {s}")
+
+    def test_discover_briefs_each_user_with_only_what_they_have_and_keeps_what_reproduces(self):
+        # A persona study told every user what to probe, so three agreeing was one brief; one logged a dead
+        # feature as working, minutes and scores were invented, and a rerun rewrote the story with no row to compare.
+        doc = (ROOT / "discover.md").read_text()
+        self.assertIn("only what that user starts with", doc)
+        self.assertIn("never a list of things to probe", doc)
+        self.assertIn("gives up", doc, "a user who quits is a result, with the step")
+        self.assertIn("No minutes, scores or feelings", doc)
+        self.assertIn("Re-run every finding yourself", doc)
+        self.assertIn("~/.fium/discover/<repo>/findings.jsonl", doc, "verbatim output carries home paths, so rows stay out of git")
+        self.assertIn("fixed or still there", doc)
+        self.assertIn("Never inside a run", doc)
+        self.assertRegex((ROOT / "SKILL.md").read_text(), r"(?m)^## Discover\n.*`discover\.md`")
+
+    def test_goals_name_their_users_by_where_they_come_from(self):
+        parts = ("comes from", "job", "starts with", "gives up when")
+        template = (ROOT / "templates/GOALS.md").read_text()
+        for part in parts:
+            self.assertIn(part, template)
+        users = re.findall(r"(?m)^- .*comes from.*$", (ROOT / "GOALS.md").read_text())
+        self.assertEqual(len(users), 3, "fium's own users")
+        for u in users:
+            for part in parts:
+                self.assertIn(part, u)
+            self.assertIn("(guessed)", u, "a user nobody has seen yet is a guess")
 
 
 if __name__ == "__main__":

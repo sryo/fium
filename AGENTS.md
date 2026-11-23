@@ -8,6 +8,7 @@
 - `SKILL.md`: the skill
 - `across.md`: the skill's /fium across
 - `loop.md`: the skill's unattended loop
+- `discover.md`: the skill's discover, users trying their jobs
 - `fium`: CLI entry
 - `install.sh`: the README's one-line install
 - `check.py`: check
