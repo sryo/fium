@@ -15,11 +15,11 @@ def check_files(root):
         out.append(finding("F1", "error", "AGENTS.md", "missing", fix))
     claude = root / "CLAUDE.md"
     if not (claude.is_symlink() and claude.readlink().name == "AGENTS.md"):
-        out.append(finding("F2", "error", "CLAUDE.md", "not a symlink to AGENTS.md",
-                           "move anything unique into AGENTS.md, then: ln -sf AGENTS.md CLAUDE.md"))
-    for name in ("README.md", "GOALS.md", "LICENSE"):
+        out.append(finding("F2", "error", "CLAUDE.md", *(("not a symlink to AGENTS.md", "move anything unique into AGENTS.md, then: ln -sf AGENTS.md CLAUDE.md")
+                                                         if claude.exists() or claude.is_symlink() else ("missing", "ln -s AGENTS.md CLAUDE.md"))))
+    for name, fix in (("README.md", "copy templates/README.md"), ("GOALS.md", "copy templates/GOALS.md"), ("LICENSE", "add your own, or copy fium's (LICENSE, beside templates/)")):
         if not (root / name).exists():
-            out.append(finding("F1", "error", name, "missing", f"copy templates/{name}"))
+            out.append(finding("F1", "error", name, "missing", fix))
     ignore = root / ".gitignore"
     if not ignore.exists():
         out.append(finding("F1", "error", ".gitignore", "missing", "copy templates/.gitignore"))

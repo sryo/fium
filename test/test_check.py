@@ -86,6 +86,25 @@ class Check(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual({x["file"] for x in f if x["rule"] == "F1"}, {"GOALS.md", "LICENSE", "README.md", ".gitignore"})
 
+    def test_a_fix_names_only_files_that_exist(self):
+        # The hint for a missing LICENSE sent a newcomer to templates/LICENSE, which fium never had.
+        make(self.root, **{"AGENTS.md": None, "GOALS.md": None, "LICENSE": None, "README.md": None, ".gitignore": None})
+        _, f = check(self.root)
+        for x in f:
+            for path in re.findall(r"templates/[\w.]+", x["fix"]):
+                self.assertTrue((FIUM.parent / path).exists(), f"{x['file']}: {x['fix']}")
+        fix = next(x["fix"] for x in f if x["file"] == "LICENSE")
+        self.assertIn("your own", fix, "fium's licence is a default, never put on someone's repo unasked")
+        self.assertIn("beside templates/", fix)
+
+    def test_a_claude_md_that_isnt_there_is_called_missing(self):
+        make(self.root)
+        (self.root / "CLAUDE.md").unlink()
+        _, f = check(self.root)
+        hit = next(x for x in f if x["rule"] == "F2")
+        self.assertEqual(hit["msg"], "missing")
+        self.assertEqual(hit["fix"], "ln -s AGENTS.md CLAUDE.md", "nothing to move out of a file that isn't there")
+
     def test_gitignore_keeps_finder_files_out(self):
         make(self.root, **{".gitignore": "node_modules\n"})
         code, f = check(self.root)
