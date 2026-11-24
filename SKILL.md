@@ -40,11 +40,14 @@ The rules are in `~/Documents/fium/RULES.md`. Read them first. Cite rule ids (P1
 ## Judge a change
 1. The plan predicts the numbers the change moves (W1).
 2. Built, always judge it with `fium done`, not `fium compare`: every How we know row, measured where the change left the base branch and now. Add `--costly` for the agent evals only after stating their tokens and reps (L1, L2), predicting each verdict (W1) and running only the tasks `fium affects <base>..HEAD` names (L2).
-3. Exit 1: not done. Fix what broke; a hard number that got worse needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: an ask number got worse past its margin, so simplify it first, then show the user the numbers and ask whether it passes. "Couldn't measure" (a command failed at the base or both sides) keeps it open too, as do code no number shows, a dropped row and an unrecorded by-hand row (W6): make it run clean, or the user says it needn't. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K3). Tell it under each goal's name, as `fium done` prints it (W4).
+3. Exit 1: not done. Fix what broke; a hard number that got worse needs simplifying until it's the same or better, and only if it can't get there without lowering quality, show the user why. Exit 3: an ask number got worse past its margin, so simplify it first, then show the user the numbers and ask whether it passes. "Couldn't measure" (a command failed at the base or both sides) keeps it open too, as do code no number shows, a dropped row and an unrecorded by-hand row (W6): make it run clean or add the row. Ask the user only when you can't, saying in the question what was found and why you can't settle it. Exit 0: it can merge. Never cross a limit. Write the answer nowhere (K3). Tell it under each goal's name, as `fium done` prints it (W4).
 4. `fium compare <base-run> <run>` judges two runs directly. A stale verdict means the run measured another commit or a dirty tree (K2).
 
 ## Loop
 To improve a project's numbers unattended (try, measure, keep or revert, repeat), read `loop.md` beside this file and follow it.
+
+## Discover
+To see whether a project's users can do what its goals promise, read `discover.md` beside this file and follow it.
 
 ## Learn from past sessions (S)
 After a working day or a live run, mine what agents actually did. `fium learn mine`, then `digest`, reads the project's transcripts, plus what `learn.json` adds (`fium learn --help`). `keep` keeps each fix as a lesson `replay` checks; `check` gates a fix. Fix the top clusters test-first, so each fix lands as a check (W2), placed where the failure happens (S1).
