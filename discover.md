@@ -15,6 +15,7 @@ Reply once (W1) with the project, its users, each one's job, where each runs, an
 ## 3. One session per user
 - A fresh session on a cheaper model than yours, briefed with only what that user starts with and their job: never a list of things to probe, the other users' findings, or what you already suspect. Users who were told what to try agree with each other and prove nothing.
 - It runs where the user isn't looking (L3), in a throwaway home and folder, installed the way the README says.
+- When what a user comes from runs and does the same job, a second session, briefed the same way, tries the job with that. Where it gets them further than the project is a finding.
 - It ends when the job is done or when that user gives up. Giving up is a result: record the step.
 - A finding is what they did (a command or a step), what came back, verbatim, and what the docs promised. No minutes, scores or feelings: nobody measured them.
 

@@ -35,3 +35,5 @@ The user's yes covers every run in the loop, so each run needn't state its cost 
 
 ## 6. Report
 `fium try`'s list and the branch name. The keeps wait on `loop/<date>` for `fium done` against the base and the user's word (K3). Say it in plain words (W4).
+
+A keep the user turns down is logged from its commit, with their reason if they gave one, so no loop tries it again blind: `fium try "<idea>" --record discard --reason "<why>"`.
