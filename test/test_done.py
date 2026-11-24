@@ -578,6 +578,11 @@ class Adds(unittest.TestCase):
         self.assertIn("cheapest", out, "an e2e run isn't the default")
         self.assertIn("headless", out)
 
+    def test_k4_the_user_is_asked_only_when_no_row_reaches_it_and_told_why(self):
+        out = self.feature(**{"t.py": "print('Ran 12 tests in 0.1s')"})[1]
+        self.assertIn("only when no row can reach it", out, "adding the row is the agent's to do")
+        self.assertIn("what the lines do and why nothing can measure them", out, "the question carries its reason")
+
     def test_k4_untracked_code_counts(self):
         self.git("checkout", "-q", "-b", "feature")
         self.write(**{"app.py": APP})
