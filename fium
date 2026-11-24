@@ -44,6 +44,7 @@ def main():
     dn.add_argument("--expect", nargs=2, action="append", metavar=("RESULT", "CMD"),
                     help="with --start: a result this change must reach and the command that passes once it has; "
                          "fium done holds the change until each passes")
+    dn.add_argument("--json", action="store_true", help="the verdict as one JSON object in place of the prose: what holds the change, each traced to its row")
     dn.add_argument("--by-hand", nargs=2, action="append", metavar=("ROW", "SAW"),
                     help="what you looked at for a row checked by hand: words from its metric, then each case and what it shows now")
     ns = sub.add_parser("noise", help="write noise.json for compare --noise from an A/A run, to stdout")

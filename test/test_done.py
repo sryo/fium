@@ -1,4 +1,4 @@
-import json, os, subprocess, sys, tempfile, unittest
+import json, os, re, subprocess, sys, tempfile, unittest
 from pathlib import Path
 
 FIUM = Path(__file__).resolve().parent.parent / "fium"
@@ -587,13 +587,15 @@ class Done(unittest.TestCase):
         from done import saved_verdict
         self.bare("--start")
         self.write(**{"m.py": "print(5)  # same number"})
-        prose = self.bare("--costly")[1]
+        # A command's seconds differ run to run; everything else is held.
+        timeless = lambda out: re.sub(r"[\d.]+s\b", "Ns", out)
+        prose = timeless(self.bare("--costly")[1])
         said = saved_verdict(self.d)["said"]
         r = subprocess.run([sys.executable, str(FIUM), "done", "--costly", "--json"], capture_output=True, text=True, cwd=self.d)
         self.assertEqual((r.returncode, r.stderr), (3, ""))
         self.assertEqual(len(r.stdout.strip().splitlines()), 1, "one object, none of the prose")
         self.assertEqual(saved_verdict(self.d)["said"], said, "what the turn-end check reads is the same")
-        self.assertEqual(self.bare("--costly")[1], prose, "without the flag it prints what it printed")
+        self.assertEqual(timeless(self.bare("--costly")[1]), prose, "without the flag it prints what it printed")
 
 
 # 25 lines of code a change adds: a path a user can take that, by itself, no number shows.

@@ -281,14 +281,33 @@ def done_main(a):
     said = []
     def tee(*x, **kw):
         said.append(" ".join(map(str, x)))
-        print(*x, **kw)
+        a.json or print(*x, **kw)
     res = done(repo, sha, branch, a.costly, print=tee)
     code = 1 if res["blocked"] or res["hard"] or res["other_model"] or res["unmet"] else \
         3 if res["grew"] or res["pending"] or res["unmeasured"] or res["asks"] or res["unseen"] else 0
     save_verdict(repo, code, [l for l in "\n".join(said).splitlines() if not l.startswith(" ")], unmet=res["unmet"], base=sha)
+    if a.json:
+        print(json.dumps({"code": code, "base": sha, "holds": holds(res), "rows": res["rows"]}))
     if code:
         sys.exit(code)
-    print("Nothing got worse past its cap and nothing broke: it can merge.")
+    a.json or print("Nothing got worse past its cap and nothing broke: it can merge.")
+
+
+# Each list done returns, as the state it leaves a change in and whose move it is: the agent's to fix, or the user's to decide.
+HOLDS = [("unmet", "result not met", "agent"), ("blocked", "broke or crossed a limit", "agent"), ("other_model", "ran on another model at the base", "agent"),
+         ("hard", "got worse, held hard", "agent"), ("grew", "got worse past its margin", "user"), ("pending", "costly, not run", "agent"),
+         ("unmeasured", "couldn't measure", "agent"), ("unseen", "not checked by hand", "agent"), ("asks", "dropped from How we know", "user")]
+
+
+def holds(res):
+    # Everything keeping a change open, each with the goal and row it came from and, for a number, its before, after and cap.
+    out = []
+    for key, state, whose in HOLDS:
+        for w in res[key]:
+            v = res["verdicts"].get(w) or next((t for t in res["rows"] if w in (t["row"], t["cmd"]) or w.startswith(t["row"] + " (")), {})
+            out.append({"state": {"adds": "adds code no number shows", "judge": "edits what judges it"}.get(w, state) if key == "asks" else state,
+                        "what": w, "whose": whose, "goal": v.get("goal"), "row": v.get("row"), **{k: v[k] for k in ("base", "run", "cap") if k in v}})
+    return out
 
 
 def verdict_file(repo):
@@ -337,6 +356,8 @@ def done(repo, sha, branch, costly=False, print=print):
     costly = {r["cmd"] for r in rows if r["kind"] == "costly"}
     timed = lambda c, x: any(m.get("noisy", m.get("kind", "time") in NOISY) for m in measure(x, label[c])["metrics"].values())
     now = {}
+    cache = runs_dir(repo) / f"done-{sha}.raw.json"
+    kept = json.loads(cache.read_text()) if cache.exists() else {}
     have = {**at_base(repo, sha, [c for c in cmds if c not in read and c not in fresh], costly, timed, now), **read}
     base = {c: measure(raw, label[c]) for c, raw in have.items() if c in cmds}
     new_row = {c for c in cmds if c in fresh and c not in base}
@@ -369,13 +390,17 @@ def done(repo, sha, branch, costly=False, print=print):
         for name in {**base[c]["metrics"], **here[c]["metrics"]}:
             owner[(c, name)] = ([i for i in users if claims(name, rows[i]["where"])] or
                                 [i for i in users if claims(name, rows[i]["text"])] or users)[0]
-    blocked, hard, grew, pending, unmeasured, other_model, failed, verdicts, news = [], [], [], [], [], [], [], {}, []
+    blocked, hard, grew, pending, unmeasured, other_model, failed, verdicts, news, table = [], [], [], [], [], [], [], {}, [], []
     for r in rows:
         if r["goal"] != shown:
             print(titles.get(r["goal"], f"Goal {r['goal']}"))
             shown = r["goal"]
         print(f"  {r['metric']}")
         c = r["cmd"]
+        # Where the row's number came from; a base read back from an earlier done is kept, not measured again.
+        table.append({"goal": titles.get(r["goal"], f"Goal {r['goal']}"), "row": r["metric"], "cmd": c, "from": "by hand" if not c else
+                      "live" if r["kind"] == "live" or c in read else "not run" if c not in here else "new" if c in new_row else
+                      "kept base" if kept.get(c) == have.get(c) else "measured now"})
         if not c:
             # A row nobody can run is satisfied only by what was looked at for this change, shown here (W6).
             s = saw.get(r["metric"])
@@ -444,7 +469,7 @@ def done(repo, sha, branch, costly=False, print=print):
                 continue
             v = judge(name, m, h["metrics"].get(name), rel(name), {**b["limits"], **h["limits"]}.get(name), noise.get("abs", {}).get(name, 0),
                       cap_for(name, m.get("kind", "time"), caps))
-            verdicts[name] = {**v, "kind": m.get("kind", "time"), "dir": m.get("dir", "lower")}
+            verdicts[name] = {**v, "kind": m.get("kind", "time"), "dir": m.get("dir", "lower"), "goal": table[-1]["goal"], "row": r["metric"]}
             # An unchanged number still shows when its row or a Caps override names it: those are the ones watched.
             if v["verdict"] == "same" and len(mine) > 3 and not (
                     named(name, r["text"]) or any(fnmatch(name, g) for g in cap_overrides(caps))):
@@ -516,4 +541,4 @@ def done(repo, sha, branch, costly=False, print=print):
               f'each one as it is now, then say what you saw: fium done --by-hand "{unseen[0]}" "<each case and what it shows>". '
               "Or the user says it needn't.")
     return {"unmet": unmet, "unseen": unseen, "blocked": blocked, "hard": hard, "grew": grew, "pending": pending, "unmeasured": unmeasured, "asks": asks,
-            "other_model": other_model, "failed": failed, "verdicts": verdicts, "raw": {c: raw[c] for c in costly & set(cmds)}}
+            "other_model": other_model, "failed": failed, "verdicts": verdicts, "rows": table, "raw": {c: raw[c] for c in costly & set(cmds)}}
