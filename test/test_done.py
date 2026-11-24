@@ -548,10 +548,58 @@ class Done(unittest.TestCase):
         self.assertIn("100 -> 80 (-20, -20%)", out)
         self.assertEqual(code, 0)
 
+    def json(self, *args):
+        code, out = self.bare("--json", *args)
+        return code, json.loads(out)
+
+    def test_json_prints_one_object_and_keeps_the_exit_code(self):
+        self.bare("--start")
+        code, v = self.json("--costly")
+        self.assertEqual((code, v["code"], v["holds"]), (0, 0, []), "nothing changed: it can merge")
+        self.write(**{"m.py": "print(5)  # same number"})
+        code, v = self.json("--costly")
+        self.assertEqual((code, v["code"]), (3, 3), "nobody looked at the screens, so the user decides")
+        self.write(**{"t.py": "raise SystemExit(1)"})
+        code, v = self.json("--costly", "--by-hand", "screens", "looked")
+        self.assertEqual((code, v["code"]), (1, 1), "a test command that fails now broke")
+
+    def test_json_lists_what_holds_the_change_with_its_cause(self):
+        self.bare("--start")
+        self.write(**{"m.py": "print(7)"})
+        code, v = self.json("--by-hand", "screens", "looked")
+        self.assertEqual(code, 3, v)
+        self.assertEqual({(h["state"], h["goal"], h["row"], h["whose"]) for h in v["holds"]},
+                         {("got worse past its margin", "Fast", "answer time", "user"), ("costly, not run", "Few tokens", "tokens per task", "agent")})
+        worse = next(h for h in v["holds"] if h["row"] == "answer time")
+        self.assertEqual((worse["base"], worse["run"], worse["cap"]), (5, 7, "ask"), "before, after and the cap it was held to")
+
+    def test_json_says_where_each_row_s_number_came_from(self):
+        self.bare("--start")
+        self.write(**{"GOALS.md": GOALS.replace("\nCaps:", "| 8 | fresh thing | `n.py` | `python3 n.py` |\n\nCaps:"), "n.py": "print(1)"})
+        came = lambda v: {r["row"]: r["from"] for r in v["rows"]}
+        first, again = came(self.json()[1]), came(self.json()[1])
+        self.assertEqual(first["log lines"], "measured now")
+        self.assertEqual(again["log lines"], "kept base", "the base is measured once per commit")
+        self.assertEqual({k: again[k] for k in ("screens checked", "data size", "tokens per task", "fresh thing")},
+                         {"screens checked": "by hand", "data size": "live", "tokens per task": "not run", "fresh thing": "new"})
+
+    def test_json_leaves_the_prose_and_the_saved_verdict_as_they_were(self):
+        from done import saved_verdict
+        self.bare("--start")
+        self.write(**{"m.py": "print(5)  # same number"})
+        prose = self.bare("--costly")[1]
+        said = saved_verdict(self.d)["said"]
+        r = subprocess.run([sys.executable, str(FIUM), "done", "--costly", "--json"], capture_output=True, text=True, cwd=self.d)
+        self.assertEqual((r.returncode, r.stderr), (3, ""))
+        self.assertEqual(len(r.stdout.strip().splitlines()), 1, "one object, none of the prose")
+        self.assertEqual(saved_verdict(self.d)["said"], said, "what the turn-end check reads is the same")
+        self.assertEqual(self.bare("--costly")[1], prose, "without the flag it prints what it printed")
+
 
 # 25 lines of code a change adds: a path a user can take that, by itself, no number shows.
 APP = "".join(f"x{i} = {i}\n" for i in range(24)) + "print(1)\n"
 ROW = "| 2 | picks delivered | `app.py` | {run} |\n| 5 | tokens per task |"
+
 
 
 class Adds(unittest.TestCase):
@@ -635,6 +683,7 @@ class Adds(unittest.TestCase):
         self.write(**{"GOALS.md": GOALS.replace("`python3 m.py`", "`python3 m.py && true`")})
         out = self.done()[1]
         self.assertIn("same  answer time: 5", out, "the row was at the base, so it's still held to it")
+
 
 
 class Docs(unittest.TestCase):
