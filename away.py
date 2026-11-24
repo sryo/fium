@@ -17,8 +17,7 @@ def away(idle, root, holds):
     m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*", idle)
     if not m:
         return False, "can't read the idle time"
-    s = int(float(m.group(1)))
-    return (True, f"no input for {s}s") if s >= AWAY_S else (False, f"input {s}s ago")
+    return (True, f"no input for {s}s") if (s := int(float(m.group(1)))) >= AWAY_S else (False, f"input {s}s ago")
 
 
 def away_main():
